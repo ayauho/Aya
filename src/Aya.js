@@ -9,7 +9,8 @@ class Aya {
 		words:['typeof','instanceof'],
 		brackets:['(',')','{','}'],
 		special:[').','.(','@','~',',,','?',',','>>','<<','<-']		
-	}		
+	}
+	special_operators=['>>','<<','<-']	
 	reserved = ['_','..','::','.','D','C','G','S','A']
 	dotContains = ['.','..',').','.(']
 	magnetLeft = [':']
@@ -160,9 +161,11 @@ class Aya {
 					}
 				}
 			}
-			if(!prod||_.dev){
+			if(!prod||_.dev||aya_script){
 				lines = script.replace(/\r/g,"").split("\n").filter(v=> v!='')
 				struct = _.linesToStruct(lines)
+				_.aya_glob_data.struct = struct
+				if(aya_script) return true
 				await parseScope({parentScope:_.window,struct,range:0})
 				js = await _.prepareJS()
 				if(!_.terminated){
@@ -182,15 +185,15 @@ class Aya {
 
 	async workout(aya_script){
 		let _ = this
-		let struct, lines, scope, range, rangeStruct, parent_scope, _scope, struct_range, struct_index
+		let struct, lines, scope, range, rangeStruct, parent_scope, _scope, struct_range, struct_index, aya
 		let entity, entity_obj={}, prev_entity_obj={},next_entity, prev_entity, last, index, d, postponed_end=0, line, prev_line, next_line, tab, postpone_finalize_assignment=0
 		let dot='.',comma=',', tilda='~',underscore='_',colon=':',q_mark='?', semicolon=';',double_colon='::',backslash='\\',gt2='>>',lt2='<<',double_comma=',,', plus='+',minus='-'
 		let left_curly = '{', right_curly='}',exclamation='!', sub='<-'
 		let set_get = ['G','S'], anon_func = ['A',tilda]
 		let hasCommaInLine = null, hasCommaInLinePrev = null, hasDoubleCommaInLine = null, hasDoubleCommaInLinePrev = null
 		let else_if, next_is, colon_count, loop_to, loop_data, for_in_loop, dots_count, middle_dots_count, dots_count_before, hidden, helper
-		let last_expr, starting_entity_obj, chain_assignment, substituting
-		let lineLastEntity, lineFirstEntity, nextEntityOperator
+		let last_expr, starting_entity_obj, chain_assignment, substituting, count_expressions=null, no_define
+		let lineLastEntity, lineFirstEntity, nextEntityOperator, next_line_first_entity
 		if(aya_script) _.aya_script=aya_script
 
 //-- Expressions And Actions	
@@ -198,7 +201,7 @@ class Aya {
 		function start(){		
 			_.level.expr ++			
 			if(!_.exprs[_.level.expr]) _.exprs[_.level.expr] = []
-			// start-end expression values grouped by expression level
+			//-- start-end expression values grouped by expression level
 			_.exprs[_.level.expr][_.exprs[_.level.expr].length] = [_.entity_index]
 			_.exprs_stack.push([ null, _.entity_index, _.level.expr, tab, _.instruction_index, _.line_index ])
 			entity_obj.start.expr=true
@@ -209,7 +212,7 @@ class Aya {
 				postponed_end++
 				return
 			}			
-			if(!_.level.expr) console.error('Trying to finish not existed expression!')
+			if(!_.level.expr) console.error('Trying to finish not existed expression!')			
 			last_expr=_.exprs[_.level.expr][_.exprs[_.level.expr].length-1]
 			starting_entity_obj = _.writes[last_expr[0]]||entity_obj
 			last_expr[1] = _.entity_index
@@ -230,6 +233,10 @@ class Aya {
 				loop_data=false
 			}
 			_.level.expr --
+			if(count_expressions){
+				count_expressions--
+				if(!count_expressions) manage_substitute(true)
+			}
 			_.exprs_stack.pop()
 			entity_obj.end.expr=true
 			return _.level.expr
@@ -259,19 +266,20 @@ class Aya {
 				}
 			}
 			else if(a===false) {									
-				let ra = recent_action()				
+				let ra = recent_action()
+				if(!ra[0]) return false				
 				name=ra[0]
 				let level = _.level[name], writes_index, start_at = entity_obj.start.at, end_at = entity_obj.end.at
-				// start-end linking based on names & levels
+				//-- start-end linking based on names & levels
 				if(!end_at[name]) end_at[name] = {}
 				if(!start_at[name]) start_at[name] = {}	
-				// is the same name action finished more then once here
+				//-- is the same name action finished more then once here
 				entity_obj.end[name] = level
 				
-				// link start-end of the action
+				//-- link start-end of the action
 
 				start_at[name][level] = ra[1]
-				// if started and ended on the same index
+				//-- if started and ended on the same index
 				if(_.entity_index==start_at[name][level]) {					
 					end_at[name][level] = _.entity_index
 				} else {
@@ -279,7 +287,7 @@ class Aya {
 					if(!_.writes[writes_index].end.at[name]) _.writes[writes_index].end.at[name]={}
 					_.writes[writes_index].end.at[name][level] = _.entity_index
 				}
-				// clear assignment recording at the start of next entity proceeding
+				//-- clear assignment recording at the start of next entity proceeding
 				if(name.includes('assignment')){
 					postpone_finalize_assignment++
 					if(!_.writes[ra[1]].chain && _.writes[ra[1]].entity){						
@@ -450,7 +458,7 @@ class Aya {
 					_.assignments[_.assignment_level].entities.push(entity)
 				}
 			} else				
-			if(stage===false) {				
+			if(stage===false) {			
 				_.assignments.pop()
 				_.assignment_level--
 			}
@@ -567,14 +575,14 @@ class Aya {
 			let p = false, p2 = false
 			has_double_comma_in_line(prev,true)
 			if(!prev){
-				p = line[1].indexOf(comma, index)
-				if(p==-1) p=false
-				hasCommaInLine = p					
+					p = line[1].indexOf(comma, index)
+					if(p==-1) p=false
+					hasCommaInLine = p					
 				return hasCommaInLine===false ? false : (hasCommaInLine > index && (!hasDoubleCommaInLine || hasCommaInLine < hasDoubleCommaInLine))
 			} else {
-				p = line[1].lastIndexOf(comma, index)
-				if(p==-1) p=false
-				hasCommaInLinePrev = p					
+					p = line[1].lastIndexOf(comma, index)
+					if(p==-1) p=false
+					hasCommaInLinePrev = p					
 				return hasCommaInLinePrev===false ? false : (hasCommaInLinePrev < index && (!hasDoubleCommaInLinePrev || hasCommaInLinePrev > hasDoubleCommaInLinePrev))
 			}
 		}
@@ -596,7 +604,8 @@ class Aya {
 		}
 
 		function line_first_entity(){
-			entity_obj.line_first_entity = !index || entity_obj.scope_start || prev_entity_is_comma() || prev_entity_is_double_comma() || prev_entity==q_mark || prev_entity==semicolon
+			entity_obj.line_first_entity = !index || entity_obj.scope_start || prev_entity_is_comma() || prev_entity_is_double_comma() || prev_entity==q_mark || prev_entity==semicolon || next_line_first_entity
+			if(next_line_first_entity) next_line_first_entity=false
 			return entity_obj.line_first_entity
 		}			
 
@@ -695,6 +704,7 @@ class Aya {
 
 		function next_line_lower_tab(){
 			 if(has_comma_in_line() || next_entity==q_mark || next_entity==semicolon) return false
+			 //if(has_double_comma_in_line()) return false
 			 if(next_line&&next_line[0] < line[0]) return true
 			 return false
 		}
@@ -890,8 +900,9 @@ class Aya {
 			}
 			parent_scope = scope
 			scope = _.getScope(parent_scope)			
-			_.createScopeTemplate(scope,parent_scope,type)						
+			_.createScopeTemplate(scope,parent_scope,type)			
 			scope_tab(tab)
+			scope.__data__.tab = tab
 			entity_obj_.scope_start = scope
 			scope.__data__.tabbed=entity_obj_.scope_tabbed = !prev_entity_equal_line_index(entity_obj_.line_index,entity_index?entity_index-1:entity_index)
 			if(['function','object','class'].includes(type)&&entity) {
@@ -905,23 +916,90 @@ class Aya {
 
 		function return_to_parent_scope(){
 			scope = scope.__data__.parentScope
-			scope_tab(false)
+			scope_tab(false)			
 		}
 
 		function func_call_on_chain(){
 			if((lineLastEntity&&dots_count || !lineLastEntity)&&entity_obj.start.maybe_func_call&&!entity_obj.next_entity_operator) {
-				// func call if the first variable in chain not recently assigned
 				action('func_call',true)
-				if(!operator(-1)) start()
+				if(!operator(-1)) start()									
 			}	
 		}
 
-		function manage_substitute(){
-			let before, last, new_line
-			;[before, last] = _.lineSubstringByIndex(line[1],_.currentLines[struct_index],index-1)
-			new_line = `${before} ${_.substitutes[entity].join(' ')}`
-			_.currentLines[struct_index] = new_line + _.currentLines[struct_index].substring((before+last).length)
-			_.currentStruct[struct_index][1].splice(index,1,..._.substitutes[entity])
+		function manage_substitute(with_expr=false){
+			let before, last, after, new_line, substitute = _.substitutes[with_expr? _.writes[substituting].entity : entity], subst=substitute[0]
+			;[before, last] = _.lineSubstringByIndex(line[1],_.currentLines[struct_index],(with_expr?_.writes[substituting].index:index)-1)		
+			
+			if(!with_expr){
+				new_line = `${before} ${subst.join(' ')}`
+				_.currentLines[struct_index] = new_line + _.currentLines[struct_index].substring((before+last).length)				
+				_.currentStruct[struct_index][1].splice(index,1,...subst)
+			}else{
+				;[, last,after] = _.lineSubstringByIndex(_.currentStruct[struct_index][1],_.currentLines[struct_index],index)				
+				let i, ranges=[],n=0,range,start=false,repls=[],repl,sub,m,reg,parts
+				for(let l in _.exprs){
+					if(_.exprs[l].length)
+					for(i=_.exprs[l].length-1;i>=0;i--){
+						range = _.exprs[l][i]
+						if(range[1]==_.entity_index){
+							start=true
+						}
+						if(start){
+							ranges.push(range)
+							n++
+						}
+						if(n==substitute[1]) {
+							break
+						}
+					}
+					if(start) break
+				}
+				ranges.reverse()
+				for(range of ranges){
+					repl=[]
+					for(i=range[0];i<=range[1];i++){
+						repl.push(_.writes[i].initial_entity)
+					}
+					repls.push(repl)
+				}
+				for(i in repls){
+					for(n in subst){
+						n=+n
+						sub = subst[n]
+						i=+i
+						repl = repls[i]
+						reg=new RegExp(`\\$${i+1}`)
+						m = sub.match(reg)
+						if(m){
+							helper = _.removeLastSymbols(subst[n],'.')
+							if(['"',"'",'`'].includes(subst[n][0]) && ['"',"'",'`'].includes( helper[helper.length-1] )){
+								subst[n] = subst[n].replace(reg,repl.join(' '))
+							}else{
+								parts = subst[n].split(reg)
+								if(parts[1][0]=='\\'){
+									parts[1]=parts[1].substring(1)
+								}
+								parts.splice(1,0,...repl)
+								if(!parts[0]){								
+									parts.shift()
+									parts[parts.length-2]+=parts[parts.length-1]
+									parts.pop()
+								}
+								subst.splice(n,1,...parts)
+							}
+							break
+						}
+					}
+				}
+				_.currentStruct[struct_index][1].splice(index+1,0,...subst)		
+
+				new_line = `${before} ${subst.join(' ')}`
+				_.currentLines[struct_index] = new_line + last + after
+				if(_.writes[substituting].line_first_entity) next_line_first_entity=true
+				substituting=null 
+				no_define=false 
+				hidden=false	
+			}		
 		}		
 
 		function write(terminate){
@@ -952,9 +1030,7 @@ class Aya {
 		function show_entity_objs(){
 			let index=0
 			for(let w of _.writes){
-				log('index=',index)
 				for(let i in w) log(i+' = ',w[i])
-				log('')
 			}
 		}
 
@@ -964,17 +1040,15 @@ class Aya {
 			struct_range = input.range || [0,struct.length]
 			rangeStruct = struct.slice(...struct_range)			
 			_.createScopeTemplate(scope,input.parentScope)
-			_.aya_glob_data.struct = struct
 			_.currentStruct=struct
 //-- Parse Lines			
 			let recentAction, from_last_position,  linkedBracketPosition, assignment_type, 
 				chain, scope_line_first_entity_index, helper2, entity_defined, n, 
-				repeat_this, repeat_entity_obj, define_count=0, no_define, skip1
+				repeat_this, repeat_entity_obj, define_count=0, skip1, this_unassignable
 			let show_logs=true 
 
-			scope_tab(rangeStruct[0][0])
-			for(d in rangeStruct){
-				d=+d
+			scope_tab(scope.__data__.tab = rangeStruct[0][0])			 
+			for(d=0; d<rangeStruct.length; d++){
 				struct_index = struct_range[0]+d
 				line = rangeStruct[d]
 				next_line = rangeStruct[d+1]
@@ -983,12 +1057,20 @@ class Aya {
 				hasCommaInLine = null
 				hasCommaInLinePrev = null
 				for(index=0; index<line[1].length; ){
-					entity = line[1][index]
-					if(_.substitutes[entity]){
-						manage_substitute()
+					entity = line[1][index]					
+					if(helper=_.substitutes[entity]){
+						if(!helper[1]) manage_substitute()
+						else{
+							hidden=true 
+							count_expressions=helper[1]
+							substituting=_.entity_index
+							no_define=true
+							this_unassignable = true
+						}
 						entity = line[1][index]
 					}
 					_.writes[_.entity_index] = entity_obj = repeat_entity_obj || {entity_index:_.entity_index,entity:null,index,struct_index,level:{},start:{at:{}},end:{at:{}}}										
+					entity_obj.initial_entity=entity
 					entity_obj.tab = tab
 					entity_obj.prev_line_tab = prev_line_tab()
 					if(!d&&!index) entity_obj.scope_start=scope
@@ -1025,19 +1107,28 @@ class Aya {
 					if(entity==sub){
 						entity_obj.entity = entity
 						entity_obj.scope = scope
-						_.substitutes[prev_entity] = line[1].slice(index+1)						
+						_.substitutes[prev_entity] = [line[1].slice(index+1)]
+						helper2=0
+						for(let i in _.substitutes[prev_entity][0]){
+							helper = _.substitutes[prev_entity][0][i].match(/\$[\d]+/g)
+							if(helper) {
+								for(let v of helper){
+									v=parseInt(v.replace('$',''))
+										if(v>helper2)helper2=v
+								}
+							}
+						}
+						_.substitutes[prev_entity].push(helper2)				
 						finish_recent_exprs()
-						finish_recent_action()						
 						prev_entity_obj.hidden=true
 						entity_obj.hidden=true
-						assignment(false)
-						postpone_finalize_assignment=0
 						write()
 						_.entity_index++
 						if(_.debug_aya) {
 							window.saved_logs['debug-aya'].pop()
 							_.debugAya({name:'substituting',entity_obj:prev_entity_obj},struct_index)
 						}
+						_.showStacks()
 						break
 					}
 					entity_obj.next_starts_key_expression = next_entity&&next_entity.length>2&&next_entity.substring(0,2)==dot+dot
@@ -1048,9 +1139,14 @@ class Aya {
 					if(colon_count) entity_obj.colon_count = colon_count	
 					if(!entity) entity = dot.repeat(dots_count)
 					if(chain_assignment) chain_assignment = false
-					if(colon_count==2&&!entity) entity_obj.anonimous=true
-					if(hidden)entity_obj.hidden=true
+					if(colon_count==2&&!entity) entity_obj.anonimous=true					
 					entity_obj.type=_.type(entity)
+					if(this_unassignable) {
+						entity_obj.type={type:'unassignable',concrete:null}
+						this_unassignable=false
+					}
+	
+					if(hidden)entity_obj.hidden=true			
 					if(entity_obj.type.type=='unassignable') entity_obj.unassignable = true
 					else if(entity_obj.type.concrete=='operator') entity_obj.operator = true
 					
@@ -1062,19 +1158,83 @@ class Aya {
 					if(next_entity==sub){
 						no_define=true
 					}
-					// start if scope
+
+					//-- import
+					if(literal()=='string' && prev_entity=='@'){
+						entity_obj.hidden = true
+						prev_entity_obj.import = entity
+						prev_entity_obj.hidden = true
+						helper = _.cutSides(entity)
+						if(dots_count==1&&helper.substring(helper.length-4)=='.aya'){
+							helper = await _.loadScript(helper)
+							aya = new Aya(false)
+							aya.process(helper)
+							lines = aya.aya_glob_data.lines
+							helper2 = _.aya_glob_data.lines[struct_index].split(`@${entity+dot}`)
+							if(!helper2[1]) helper2.pop()
+								helper = _.aya_glob_data.struct[d][1].splice(index+1)
+								if(next_entity==comma) helper.shift()
+								_.aya_glob_data.struct[d][1].pop()
+								_.aya_glob_data.struct[d][1].pop()
+								if(_.aya_glob_data.struct[d][1][_.aya_glob_data.struct[d][1].length-1]==comma) {
+									_.aya_glob_data.struct[d][1].pop()
+									if(helper2[0]){
+										helper2[0] = helper2[0].trim()
+										helper2[0] = helper2[0].substring(0,helper2[0].length-1).trim()																		
+									}
+									dots_count--
+									index--								
+									_.entity_index--																	
+									_.writes.pop()																		
+								}
+								if(tab) for(let i in aya.aya_glob_data.struct){
+									aya.aya_glob_data.struct[i][0]+=tab
+								}
+								if(helper[0]) {								
+									aya.aya_glob_data.struct=aya.aya_glob_data.struct.concat([[tab,helper,['',[],[]]]])
+								}
+								_.aya_glob_data.struct.splice(d+1,0,...aya.aya_glob_data.struct)						
+								if(next_entity==comma){
+									helper2[1]=helper2[1].trim().substring(1).trim()									
+								}								
+								helper2.splice(1,0,...aya.aya_glob_data.lines)
+								if(!helper2[0]) helper2.shift()
+								_.aya_glob_data.lines.splice(struct_index,1)
+								_.aya_glob_data.lines.splice(struct_index,0,...helper2)
+								if(!_.aya_glob_data.struct[d][1][0]) {
+									_.aya_glob_data.struct.splice(d,1)
+								}
+								rangeStruct = _.aya_glob_data.struct								
+								if(prev_entity_obj.scope_start) return_to_parent_scope()
+								dots_count--
+								index--							
+								_.entity_index--								
+								_.writes.pop()
+								line = rangeStruct[d]
+								next_line = rangeStruct[d+1]
+								tab = line[0]
+								hasCommaInLine = null
+								hasCommaInLinePrev = null												
+								continue
+						} else if(/^(http(s?)):\/\//i.test(helper)){
+							await aya_import(helper)
+							for(let i in window) if(!_.window[i]) _.window[i]=window[i]
+						}
+					}
+
+					//-- start if scope
 					if(prev_entity==q_mark){
 						create_child_scope(null,'if')
 					}
 
-					// prepare else
+					//-- prepare else
 					if(next_entity == semicolon) {
 						helper = finish_recent_actions('by_name','if')+1
 						finish_recent_exprs('entity_index',helper,true)
 						scope = _.writes[helper].scope_start.__data__.parentScope
 					}
 
-					// loop
+					//-- loop
 					if((middle_dots_count==2&&entity!='..')||repeat_this){				
 						if(!repeat_this){
 							entity_obj.loop={}
@@ -1109,14 +1269,14 @@ class Aya {
 					    converts()
 					}					
 
-					//plus+plus or minus+minus
+					//-- plus+plus or minus+minus
 					if((entity==plus||entity==minus)&&(lineLastEntity||right_bracket(next_entity)||left_bracket(prev_entity))){
 						entity_obj.entity = entity = entity==plus ? plus+plus: minus+minus
 						if(left_bracket(prev_entity)) start()
 						skip1=true
 					} else
 
-					// start class scope
+					//-- start class scope
 					if((prev_entity_obj.class_name||prev_entity_obj.extends)&&lineFirstEntity){
 						helper = last_position('class')+1
 						create_child_scope(_.writes[helper].entity,'class')
@@ -1126,7 +1286,7 @@ class Aya {
 						return_to_parent_scope()
 					} else
 
-					// start loop data or loop scope 
+					//-- start loop data or loop scope 
 					if(prev_entity_obj.end.loop_to || prev_entity_obj.end.loop_data || entity_obj.for_in_loop){
 						if(entity_obj.for_in_loop) loop_to=false
 						if(left_bracket(entity)){
@@ -1146,7 +1306,7 @@ class Aya {
 						}						
 					} else				
 
-					// start object
+					//-- start object
 					if(prev_entity_obj.colon_count==2 && !operator() && (prev_line_lower_tab() || prev_entity_equal_line_index()&&entity!=comma)){
 						if(prev_entity_obj.anonimous || prev_entity_obj.obj_key_expr){
 							helper = null
@@ -1161,7 +1321,7 @@ class Aya {
 						skip1=true								
 					} else
 
-					// if
+					//-- if
 					if(entity==q_mark){
 						hide_left_expression()												
 						if(else_if){							
@@ -1180,7 +1340,7 @@ class Aya {
 						skip1=true
 					} else
 
-					// else					
+					//-- else					
 					if(entity==semicolon){
 						_.record(true)
 						_.record('level_expr',_.level.expr+1)
@@ -1206,9 +1366,8 @@ class Aya {
 						skip1=true
 					} else
 
-					// start func scope
+					//-- start func scope
 					if(func_decl()==1){
-						// default argument expression starts
 						if(entity_obj.has_backslash) entity_obj.start.default=true
 						let func_decl_index = func_decl(true).entity_index			
 						if((lineFirstEntity || _.writes[ func_decl_index ].level.expr == _.level.expr) 
@@ -1246,7 +1405,7 @@ class Aya {
 						entity_obj.hidden=true						
 					}								
 
-					// class
+					//-- class
 					if(entity=='C'){
 						if(recent_action()[0]=='class'){
 							entity_obj.entity = entity_obj.entity = entity = 'constructor'														
@@ -1263,7 +1422,7 @@ class Aya {
 						skip1=true
 					} 
 
-					// combination or nested arrays, objects & functions
+					//-- combination or nested arrays, objects & functions
 					if(!['...','..','.'].includes(entity)&&middle_dots_count&&middle_dots_count!=2&&!literal()&&(!dots_count_before||prev_entity_obj.start.key_expression)){
 						try{
 							entity_obj.recent_action = recent_action()
@@ -1288,14 +1447,14 @@ class Aya {
 								delete entity_obj.defined.__data__.parentScope[entity_obj.defined.__data__.entity]
 							}	
 						} catch(err) {
-							log(err)
 							_.errorType(0,_.line_index)
 							write(true)																												
 							return false
 						}
 					}
 
-					//continue chaining
+
+					//-- continue chaining
 					if(!['...','..','.'].includes(entity)&&dots_count_before==1 && action_level('chain')){
 						if(!prev_entity_obj.start.key_expression){
 							entity_obj.continue_chain=true
@@ -1323,7 +1482,7 @@ class Aya {
 						}
 					}
 
-					// new / static
+					//-- new / static
 					if(entity==lt2){
 						if(scope.__data__.type=='class') {
 							entity_obj.converted='static '
@@ -1333,14 +1492,14 @@ class Aya {
 						skip1=true
 					} else					
 
-					// prev is new
+					//-- prev is new
 					if(prev_entity_obj.entity==lt2&&!prev_entity_obj.static&&!func_call_start()){
 						action('func_call',true)
 						if(!operator(-1)) start()
 						skip1=true
 					}
 
-					// array literal
+					//-- array literal
 					if(entity=='..'&&(!lineLastEntity||next_line_higher_tab()||recent_action()[0]=='func_call')){
 						action('array_literal',true)
 						entity_obj.anonimous=true
@@ -1349,7 +1508,7 @@ class Aya {
 						skip1=true
 					}
 
-					// work with brackets
+					//-- work with brackets
 					if(bracket(entity)){
 						if(left_bracket(entity)&&!operator(-1)){
 							start()
@@ -1383,7 +1542,7 @@ class Aya {
 						chain_assignment=true						
 						finish_recent_action()				
 					}				
-					// func declaration or variable assignment
+					//-- func declaration or variable assignment
 					if(!skip1 
 						&& ((colon_count==2&&!entity || assignable() || recent_action()[0]=='object_assignment' || chain_assignment || anon_func.includes(entity)) 
 						&& !loop_data && !loop_to && middle_dots_count!=2 
@@ -1393,7 +1552,7 @@ class Aya {
 						&& !next_continue_chain() && !entity_obj.next_entity_operator && (!operator(-1)||recentAction[0]=='key_expression')
 						&& !entity_obj.next_starts_key_expression) 
 						|| colon_count==2 ){
-						//func declaration
+						//-- func declaration
 						recentAction = recent_action()[0]	
 						if(anon_func.includes(entity) || 
 							(!chain && !dots_count && free_to_assign() && next_line_higher_tab() || next_entity==tilda || set_get.includes(prev_entity)) 
@@ -1424,8 +1583,8 @@ class Aya {
 							}							
 							if(assignment_1_or_2()) assignment(3)
 						}
-						// start assignment
-						if( !anon_func.includes(entity) && colon_count==2 && !entity || recent_action()[0]!='immediate_func_call'&&recent_action()[0]!='object_assignment' && (!chain||chain_assignment) && (assignable()||chain_assignment) && !func_call_start() && !func_decl_start() && value(next_entity) && (!lineLastEntity || dots_count==2) || colon_count==2){
+						//-- start assignment
+						if( !anon_func.includes(entity) && colon_count==2 && !entity || recent_action()[0]!='immediate_func_call'&&recent_action()[0]!='object_assignment' && (!chain||chain_assignment) && (assignable()||chain_assignment) && !func_call_start() && !func_decl_start() && value(next_entity) && (!lineLastEntity || dots_count==2) && !no_define || colon_count==2){
 							if(dots_count==2) {								
 								assignment_type='array'
 								if(helper = entity_obj.defined) {
@@ -1455,17 +1614,17 @@ class Aya {
 						}
 					}
 
-					// change assignment stage
+					//-- change assignment stage
 					if(assignment()){
 						if(assignment() == 1 && value() && !assignment(true).entities.includes(entity) ){
 							assignment(2) // prevent further ability to assign undefined
 						}
 						if(assignment() == 2){
-							// prevent further ability to continue assignment chain
+							//-- prevent further ability to continue assignment chain
 							if(right_bracket(entity) || entity_obj.next_entity_operator || func_call_start() || (value()&&!chain_assignment&&!_.entityDefined(scope,entity)) || (assignment(true).type=='object'&&!entity_obj.start.object_assignment) || assignment(true).type=='array'){
 								assignment(3)
 							}						
-							// cann't assign undefined to defined var
+							//-- cann't assign undefined to defined var
 							try{
 								if(assignment() == 2&&free_to_assign()&&func_decl()!=2&&!chain_assignment) {
 									_.error(0,entity)
@@ -1480,6 +1639,7 @@ class Aya {
 						}
 						if(entity=='..'&&(lineLastEntity||next_is=='value')&&!next_line_higher_tab()) {
 							if(assignment() == 2) assignment(3)
+							//-- entity_obj.converted='[]'
 							set_type_to_assignments('array',_.assignment_level)
 							if(recent_action()[0]!='array_literal') {
 								entity_obj.converted='['
@@ -1489,6 +1649,7 @@ class Aya {
 								}
 							}
 							finish_recent_action()
+							//-- entity_obj.semicolon=true
 						}							
 						if(assignment()!=3 && (['@',lt2,gt2].includes(entity) || entity_obj.next_entity_operator) ){
 							if(entity==gt2&&_.debug_aya) {
@@ -1506,8 +1667,8 @@ class Aya {
 						}											
 					}
 
-					// func call not started yet but needs to start
-					if(!entity_obj.start.func_decl && func_call_start(true) && !_.entities.words.includes(prev_entity) && assignable() && entity_obj.defined && entity_obj.defined.__data__.type=='function'){
+					//-- func call not started yet but needs to start
+					if(!entity_obj.start.func_decl && func_call_start(true) && !_.entities.words.includes(prev_entity) && assignable() && entity_obj.defined && entity_obj.defined.__data__.type=='function' && (dots_count || !func_call() || !lineLastEntity)){
 						action('func_call',true)
 						if(dots_count)dots_count--
 						if(!operator(-1)) {
@@ -1519,16 +1680,16 @@ class Aya {
 						}
 					}
 
-					// return statement
+					//-- return statement
 					if(!entity_obj.start.immediate_func_call && !entity_obj.default && lineFirstEntity&&(not_assignment_start()||entity_obj.anonimous)&&func_decl()==2 && (!func_call_start() || dots_count==1 || lineLastEntity&&dots_count) && scope_tab()==tab && !next_line_higher_tab()) {
-						if(recent_action()[0]!='object_assignment'||entity_obj.anonimous){
+						if((recent_action()[0]!='object_assignment'||entity_obj.anonimous) && !_.special_operators.includes(next_entity)){
 							entity_obj.return=true
 						}
 						if(dots_count) dots_count--
 					}
 
 
-					// force return					
+					//-- force return					
 					if(func_decl()==2){
 						if(tab==scope_tab()&&lineFirstEntity) scope_line_first_entity_index = _.entity_index						
 						if(lineLastEntity&&(!func_call_start()&&dots_count==1|| func_call_start()&&dots_count==2 )){
@@ -1537,7 +1698,7 @@ class Aya {
 						}
 					}
 
-					//finish actions by dots
+					//-- finish actions by dots
 					if(entity&&!repeat_this&&(assignment_type!='array'||assignment()<3)&&dots_count && (assignment() > 2 || !assignment()) && !['...','..','.'].includes(entity)&&!right_bracket(next_entity)){						
 						for(let i=0; dots_count>0;){
 							if(!recent_action()[0]) break
@@ -1552,13 +1713,13 @@ class Aya {
 						}
 					}
 
-					// next entity continues chain (finish func call)
+					//-- next entity continues chain (finish func call)
 					if(next_continue_chain()&&func_call()&&!dots_count){
 						finish_recent_actions('by_name','func_call')
 						end(true)
 					}
 
-					// finish all actions started after nearest left bracket
+					//-- finish all actions started after nearest left bracket
 					if(right_bracket(next_entity)){
 						try{
 							from_last_position = 0
@@ -1584,12 +1745,12 @@ class Aya {
 						}
 					}
 
-					//func call finished if next is operator
+					//-- func call finished if next is operator
 					if(entity_obj.next_entity_operator && func_call_start() && !func_call_end()){
 						finish_recent_action()
 					} else
 
-					// force let in the scope					
+					//-- force let in the scope					
 					if(!func_call_start() && (free_to_assign()&&(assignment()==1||func_decl()==2||loop_data) || assignable() && dots_count_before==1) && !chain_assignment && next_is!='key' && !chained() && !_.inAssignmentProcess(entity_obj.defined,entity)){
 						if(for_in_loop&&loop_data){
 							define_count++
@@ -1606,7 +1767,7 @@ class Aya {
 						if(prev_entity_obj.start.loop_data) entity_obj.loop_iterator=true
 					}
 
-					// standard expression
+					//-- standard expression
 					if(assignable() || literal() || chained()){												
 						if(!func_call_start()){
 							try{
@@ -1630,7 +1791,7 @@ class Aya {
 							}
 						}
 					}					
-					// make gap in chain to put expression					
+					//-- make gap in chain to put expression					
 					if(entity_obj.next_starts_key_expression){
 						if(recent_action()[0]=='func_call'){
 							finish_recent_action()
@@ -1640,7 +1801,7 @@ class Aya {
 						action('key_expression',true)
 					}
 
-					// object key-value pairs
+					//-- object key-value pairs
 					helper = latest_action('func_decl','object_assignment')
 					if(helper){
 						next_is=null
@@ -1727,10 +1888,7 @@ class Aya {
 								}
 							}
 
-							// comma on assignment level lowering
 							if(prev_entity_obj.level.assignment>_.assignment_level){
-								//entity_obj.converted=','+entity
-								//entity_obj.preceding_comma=true
 							}
 						}catch(err){
 							_.errorType(3,_.line_index)
@@ -1739,13 +1897,12 @@ class Aya {
 						}
 					}
 
-					// end of func declaration in object scope						
 					if(recent_action()[0]=='object_assignment'&&assignment()==3&&prev_entity_obj&&prev_entity_obj.end.func_decl){
 						entity_obj.converted=','+entity
 						entity_obj.preceding_comma=true
 					}
 					
-					//finalize actions and expressions
+					//-- finalize actions and expressions
 					if(lineLastEntity){
 						if(lineFirstEntity){
 							if(entity==dot) entity_obj.converted='break'
@@ -1756,7 +1913,13 @@ class Aya {
 							finish_recent_actions()
 							postponed_end = 0
 							entity_obj.last=true
-						} else if((next_line_equal_tab()||!next_line) && tab==scope_tab() && has_comma_in_line() || entity_obj.next_line_equal_tab_no_comma_separated && scope_tabbed()) {
+						} else if(next_entity == double_comma){
+							helper2 = tab
+							helper = finish_recent_actions('scope') || 0
+							finish_recent_exprs('entity_index',helper,true)
+							helper2 = tab-scope_tab()
+							_.aya_glob_data.struct[lineLastEntity?d+1:d][0]-=helper2
+						} else if(tab==scope_tab() && has_comma_in_line() || entity_obj.next_line_equal_tab_no_comma_separated && scope_tabbed()) {
 							postponed_end=0
 							finish_recent_exprs('instruction_index',null)
 							finish_recent_actions('instruction_index')														
@@ -1767,20 +1930,17 @@ class Aya {
 							if(helper>-1) finish_recent_actions('entity_index', helper)
 							else finish_recent_actions(next_line_tab())
 							if(entity_obj.next_line_lower_tab&&scope_tab()==next_line[0] || next_line_equal_tab() && tab==scope_tab()) entity_obj.semicolon=true;										
-						} else if(next_entity == double_comma){
-							helper = finish_recent_actions('scope') || 0
-							finish_recent_exprs('entity_index',helper,true)
 						}
 					}
 
-					// finishing func argument expression
+					//-- finishing func argument expression
 					if(func_decl()==1 && !entity_obj.start.func_decl && (lineLastEntity || first_symbol(next_entity)==backslash)){						
 						helper = last_position('default',_.entity_index)
 						finish_recent_exprs('entity_index',helper,true)
 						finish_recent_actions('entity_index',helper)						
 					}
 
-					// finish object value by expression
+					//-- finish object value by expression
 					if(entity_obj.obj=='value'){
 						range = recent_expr_range(1)
 						if(range[1]&&_.writes[range[0]].start.obj_value && range[1]==_.entity_index){
@@ -1790,7 +1950,7 @@ class Aya {
 					}
 
 
-					// loop from expression
+					//-- loop from expression
 					if(repeat_this){
 						postponed_end=0
 						finish_line_actions_exprs()
@@ -1814,20 +1974,20 @@ class Aya {
 						continue
 					}
 
-					// loop to expression
+					//-- loop to expression
 					if(loop_to || entity_obj.for_in_loop) {
 						entity_obj.hidden=true
 						if(middle_dots_count==2)entity_obj.variants.push(entity_obj)
 					}
 
-					// end expressions before if
+					//-- end expressions before if
 					if(next_entity==q_mark){
 						postponed_end = 0
 						finish_line_actions_exprs()	
 						entity_obj.hide_else_close=true					
 					}
 
-					// manage variants func call collision
+					//-- manage variants func call collision
 					if(entity_obj.restore_start_func_call) {
 						entity_obj.variants[0].start.func_call=true
 					}				
@@ -1851,18 +2011,18 @@ class Aya {
 					}
 				
 					if(recent_action()[0]=='object_assignment'){ 
-						// continue obj
+						//-- continue obj
 						if(!next_is||next_is=='set_get'){							
 							next_is='key'
 						}
-						// finish obj
+						//-- finish obj
 						if(next_entity==comma) {
 							finish_recent_actions('while_not','object_assignment')
 							helper = _.level.expr
 							finish_recent_exprs('entity_index',recent_action()&&(recent_action()[1]+1)||0,true)
 							next_is=null
 						}
-						// end value by expression end
+						//-- end value by expression end
 						if(next_is=='value'&&colon_count!=1){
 							helper = last_position('obj_value')
 							range = _.longestRecentExprRange(_.entity_index)
@@ -1872,29 +2032,24 @@ class Aya {
 						}
 					}
 
-					// await
+					//-- await
 					if(entity_obj.start.func_call && prev_entity=='@'){
 						prev_entity_obj.converted='await '	
 					}
 
-					// import
-					if(literal()=='string' && prev_entity=='@'){
-						entity_obj.hidden = true
-						prev_entity_obj.import = entity
-						prev_entity_obj.hidden = true
-						helper = _.cutSides(entity)
-						if(/^(http(s?)):\/\//i.test(helper)){
-							await aya_import(helper)
-							for(let i in window) if(!_.window[i]) _.window[i]=window[i]
-						}
-					}
-
-					// finalize key_expression
+					//-- finalize key_expression
 					recentAction = recent_action()
 					if(recentAction[0]=='key_expression'&&_.entity_index>recentAction[1]+1&&!operator()&&!entity_obj.next_entity_operator){
 						finish_recent_action()
 					}
-					if(no_define)no_define=false
+
+
+					if(next_entity&&next_entity[0]==dot&&next_entity[1]!=dot && !action_level('chain')){
+						action('chain',true)
+						if(!operator(-1)) start()
+					}
+
+					if(no_define&&!substituting)no_define=false
 					entity_obj.recent_action = recent_action()[0]
 
 					write()
@@ -1905,7 +2060,7 @@ class Aya {
 						if(!postpone_finalize_assignment&&recent_action()[0]=='object_assignment') next_is='key'
 					}
 
-					// function/object assignment to variable(s)
+					//-- function/object assignment to variable(s)
 					for(let w of ['array_literal','func_decl','object_assignment','var_assignment']){						
 						if(entity_obj.end[w]){
 							if(w=='var_assignment' && (entity_obj.end.object_assignment)) break
@@ -2281,6 +2436,7 @@ class Aya {
 						i--
 						wn=_.writes[i]
 					}
+					show&&console.trace(i,wn.entity,wn,	wn.tab,add,add_tab,correct)
 					wn.repeat_tab = wn.tab+add
 					r = wn.repeat_tab+add_tab+correct
 					if(r<0) r=0		 
@@ -2324,7 +2480,7 @@ class Aya {
 				let level = w.level[name], exprs=[]	
 				for(let i2 in _.exprs[w.level.expr+1]){
 					level_expr=_.exprs[w.level.expr+1][i2]
-					// filter appropriate arguments related expressions (except last)
+					//-- filter appropriate arguments related expressions (except last)
 					if(level_expr[0]>i&&level_expr[1]<w.end.at[name][level]){
 						exprs.push(level_expr)						
 					}
@@ -2352,6 +2508,7 @@ class Aya {
 				}
 				hidden = !check? false : w.hidden	
 				if(w.func_decl.stage==1&&!w.start.func_decl&&check) continue
+				if([',,'].includes(w.entity)) continue
 				n=_.writes[i+1]
 				p=_.writes[i-1]
 				if(p&&p.catch_error){
@@ -2477,7 +2634,7 @@ class Aya {
 					add_tab--
 					delete w.add_tab_minus
 				}					
-// entity/converted
+//-- entity/converted
 				if(!hidden){
 					if(!w.hidden && (w.scope_start || w.line_first_entity||['?'].includes(w.entity)||['key_value','set_get'].includes(w.obj)||w.start.obj_key) && ![';'].includes(w.entity) && !['else if'].includes(w.converted)) {
 						if(w.preceding_comma){
@@ -2526,18 +2683,18 @@ class Aya {
 					if(!w.scope) _.error(6)
 					else w.scope.__data__.defaults = exprs
 				}
-				// separators between arguments (as expressions) of func call
+				//-- separators between arguments (as expressions) of func call
 				if(w.start.func_call && !hidden) {
 					js+='('
 					if(!w.end.func_call){
 						separators = set_separators('func_call')
 					}
 				}
-				// separators between expressions on array assignment
+				//-- separators between expressions on array assignment
 				if(w.start.array_assignment && n.assignment.type=='array' && !hidden) {
 					separators = set_separators('array_assignment',w.push?`);${w.entity}.push(`:',')
 				}
-				// separators between expressions on array literal
+				//-- separators between expressions on array literal
 				if(w.start.array_literal && !hidden){
 					separators = set_separators('array_literal')
 				}
@@ -2679,7 +2836,7 @@ class Aya {
 										if(w.scope.__data__.type!='object'&&w.has_semicolon===undefined)w.has_semicolon=true							
 										js+="\n"+repeat(_.writes[helper],false,true)
 										if(!current_scope.__data__.arrow)current_scope=current_scope.__data__.parentScope
-										js+=close_assoc[name]										
+										js+=close_assoc[name]								
 									}
 									closed_actions_count++
 								}
@@ -2711,7 +2868,7 @@ class Aya {
 							if(!aya_import){
 								initiates.push(`window.aya_import = async sr=> (await new Promise(r=>{let d=document,s=d.createElement('script');s.async=true;s.onload=()=>r();s.src=sr;d.getElementsByTagName('head')[0].appendChild(s)}));\n`)
 							}
-							js+=repeat(w,false,true)+`await aya_import('${helper}');`+"\n"
+							js+="\n"+repeat(w,false,true)+`await aya_import('${helper}');`+"\n"
 							aya_import=true
 							_.imported[helper] = true
 						}
@@ -2837,7 +2994,7 @@ class Aya {
 			line = line.replace(/\t/g,' ')
 			line+=' '
 			
-			// work with line literals (disable space character confusion)
+			//-- work with line literals (disable space character confusion)
 			ss=es=ss2=[]
 			;[line,ss] = _.temporaryReplaceStrings(line)
 
@@ -2876,7 +3033,7 @@ class Aya {
 			}
 			_lines.push(ss[0]? _.temporaryReplaceStrings(line,false,ss) : line)	
 			
-			// work with regexes (..)
+			//-- work with regexes (..)
 			m=line.match(/\/.*[^\\]\//g)
 			if(m){
 				for(let s in m){
@@ -2885,7 +3042,7 @@ class Aya {
 					ss2.push(m[s])
 				}
 			}
-			// work with signs and spaces aroud them
+			//-- work with signs and spaces aroud them
 			let sSigns=[[],[],[],[],[]]
 			for(sign of _.allSigns){
 				sSigns[sign.length].push(sign)
@@ -2948,14 +3105,13 @@ class Aya {
 
 	helper(){
 		let _=this
-		// tests logs
+		//-- tests logs
 	    window.log = function() { if(_.test)console.log(...arguments) }
 		window.saved_logs={};window.save_log=function(){if(!saved_logs[arguments[0]])saved_logs[arguments[0]]=[];saved_logs[arguments[0]].push(Array.from(arguments).slice(1))};
 		window.release_logs=function(){console.group(arguments[1]||arguments[0]);if(saved_logs[arguments[0]]) for(let l of saved_logs[arguments[0]])console.log(...l);console.groupEnd(arguments[1]||arguments[0]);saved_logs[arguments[0]]=[]};    
 		window.aya_import = async sr=> (await new Promise(r=>{let d=document,s=d.createElement('script');s.async=true;s.onload=()=>r();s.src=sr;d.getElementsByTagName('head')[0].appendChild(s)}));
 		window.addEventListener('error', e=>{
 			event.preventDefault()
-			log('%c '+event.message,'font-style:italic;color:yellow;')
 		})
 		Object.defineProperty(window,'dev',{
 			set: val=>{
@@ -2990,7 +3146,7 @@ class Aya {
 		}
 	}
 	
-	// data template for scope
+	//-- data template for scope
 	createScopeTemplate(object,parentScope,type=null,force=false){
 		if(!object.__data__||force){
 			object.__data__ = {
@@ -3454,12 +3610,6 @@ class Aya {
 			}
 			else converted+=`.${entity}`
 		}
-		/*
-		if(unknow_object) {
-			entity_obj.scope = unknow_object
-			return entity
-		}
-		*/
 		if(!contine){			
 			converted = parent = parts[0]
 			for(let i=0;i<parts.length-1;i++){
@@ -3507,7 +3657,6 @@ class Aya {
 	showStacks(){
 		let _=this,stack=[]
 		for(let v of _.actions_stack) stack.push(v.slice(0,5))
-		log(JSON.stringify(stack),JSON.stringify(_.exprs_stack))
 	}
 
 	removeLastSymbols(entity,symbol){
@@ -3597,20 +3746,21 @@ class Aya {
 		this.terminated=true	
 	}
 	lineSubstringByIndex(struct,line,index){
-		let _=this, before='', part, last, i=0, pf=0, f=0
-		for(let e of struct){
+		let _=this, before='', part, last, after='', i=0, pf=0, f=0
+		for(let e of struct){			
 			pf = f
 			f = line.indexOf(e, pf)
-			f+=e.length							
-			part = line.substring(pf,f)		
+			f+=e.length
+			part = line.substring(pf,f)	
 			if(i==index+1) {
 				last = part
+				after = line.substring(f)
 				break
 			}
 			before += part
-			i++	
+			i++
 		}
-		return [before,last]
+		return [before,last,after]
 	}
 	showTerminatedInput(index,line_index){
 		let _=this

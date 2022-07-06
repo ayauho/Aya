@@ -48,7 +48,7 @@ f: g: 0
 Func  \'Hello' \'world' \f + g
    g 1                           # will be taken `g` from outer scope
    .f 1                          # `f` will be assigned in the function scope (starting dot)
-  a + ' ' + b
+   a + ' ' + b
   
 # Calling Func without arguments will output the string 'Hello world'
 # If a function is called without arguments it should end up with dot (.)
@@ -61,18 +61,18 @@ Func 'Hello ' + 'my' 'beautiful world'
 
 # Inside function scope behaviour depends on finishing dots
 Func
-  func_call        # returns func_call without calling
-  func_call.       # only calls
-  func_call..      # returns calling
+   func_call        # returns func_call without calling
+   func_call.       # only calls
+   func_call..      # returns calling
 /* also returns calling 
    (second dot is not needed because 
    arguments indicate function call) */  
-  func_call 1 10.
+   func_call 1 10.
 
 # A is a definition of anonimous function;
 # here anonimous function assigned to variable `func`
 func A
-  log 'the body'
+   log 'the body'
 
 /* Tilda (~) is definition for arrow function;
    here arrow function assigned to variable `func`;
@@ -117,8 +117,8 @@ obj ::
    1) Single-line instruction
    2) Multi-line tabbed instructions */
 obj1::
-  key1: 100
-  key2: 5
+   key1: 100
+   key2: 5
   
 obj2:: k1:'Hello '+'my dear ' k2:'world'  # Values are recognized as single expression
 
@@ -128,11 +128,11 @@ log obj2.k1 + obj2.k2
 
 # Nested objects are also defined with :: (two colons) which should be magneted to the key (`two` in this case)
 obj3::
-  one: 1
-  two::
-    x:5 
-    y:'some'
-  three: 1 + 1 + 1
+   one: 1
+   two::
+      x:5 
+      y:'some'
+   three: 1 + 1 + 1
 
 # The same in one-line
 # End dot indicates finishing of nested object assignment
@@ -141,7 +141,7 @@ obj3:: one: 1 two:: x:5 y:'some'. three: 1 + 1 + 1
 # Object literals are defined with separate ::
 # Singletone key-values can be used (as `a` here)
 Func
-  log a1.a + a1.'is string'   # Example of calling object's values
+   log a1.a + a1.'is string'   # Example of calling object's values
 a 1
 Func :: a 'is string':2       # Outputs `3`
 
@@ -150,8 +150,8 @@ Func :: a 'is string':2       # Outputs `3`
    'one'+'two' is also key-expression in the example bellow */
 b 'hello'
 obj4::
-  b:'world'
-  'one'+'two': 3
+   b:'world'
+   'one'+'two': 3
 ```
 
 ### Chains
@@ -160,8 +160,8 @@ obj4::
    calling it can be without finishing dot 
    if currently not in function scope */
 obj::
-  func: A \1 \1
-    a+b
+   func: A \1 \1
+      a+b
 obj.func
 log obj.func 5 5  # outputs 10
 
@@ -206,11 +206,11 @@ a ! b ? log 'do something' ; log 'do something else'
 /* If `a` AND `b`, ( single ampersand (&) is && in JS )
    else if `a` OR `b`, ( single (|) is || in JS ) */ 
 a & b ?
-  log 'do something'
+   log 'do something'
 ; a | b ?
-  log 'do something if-else'
+   log 'do something if-else'
 ;
-  log 'do something else'
+   log 'do something else'
 
 # == is === in JS (strict equality)
 a == b ? log 'do something'
@@ -231,7 +231,7 @@ a ! !b ? log 'do something'
 ```
 # Simple from 0 up to 10 iterator
 0..10
-  log 'Repeat this'
+   log 'Repeat this'
 
 # Descending iteration, result saved in `i` (name can be chosen)
 # Used custom `i` decreasing expression
@@ -247,42 +247,42 @@ from..to+5 (i) log i  # iterates 16 times
    `k` and `i` are optional, variable names can be chosen */
 obj:: a:1 b:2 c:3
 obj..(v k i)
-  log v
+   log v
 
 /* Infinite loop
    single separate dot means `break`
    double separate dots means `continue` */
 0..I (i)
-  i=100? .
-  i<50? ..
-  log 'Do something'
+   i=100? .
+   i<50? ..
+   log 'Do something'
 ```
 
 ### Class
 ```
 # Class is defined with `C` (`c` capital letter)
 C className
-  a: 1  # class scope variable definition
-  C \'some_default_value'             # constructor defined also with `C`
-    log 'Constructor instructions'
-  class_func
-    log 'Usual function of the class, input: ' + arg
-  << static_func
-    log 'Static function of the class'
-  G get_func                          # Capital letter `G` defines getter
-    _class_func 'Hello'.              # returns this.class_func call with 'Hello' inputed argument
-    log 'Getter of the class'
-  S set_func                          # Capital letter `S` defines getter
-    _a: arg                           # `a` preceding underline turned to this.a
-    log 'Setter of the class'
+   a: 1  # class scope variable definition
+   C \'some_default_value'             # constructor defined also with `C`
+      log 'Constructor instructions'
+   class_func
+      log 'Usual function of the class, input: ' + arg
+   << static_func
+      log 'Static function of the class'
+   G get_func                          # Capital letter `G` defines getter
+      _class_func 'Hello'.              # returns this.class_func call with 'Hello' inputed argument
+      log 'Getter of the class'
+   S set_func                          # Capital letter `S` defines getter
+      _a: arg                           # `a` preceding underline turned to this.a
+      log 'Setter of the class'
 
 # `<<` is equivalent to `new` in JS
 class_exemplar << className 'Some string argument'
 
 # childClass extends className
 C chidClass className
-  C
-    super   # may be called without ending dot
+   C
+      super   # may be called without ending dot
 ```
 
 ### Emit
@@ -352,7 +352,7 @@ process_error
   log 'Do something with error'
 a 1
 {
-  a b-1  # this will generate `ReferenceError: b is not defined`
+   a b-1  # this will generate `ReferenceError: b is not defined`
 } ~ log error, process_error error,,()
 ```
 

@@ -46,6 +46,8 @@ d.e: a  # assignment to chained entity (colon is necessary)
 */
 f: g: 0
 Func  \'Hello' \'world' \f + g
+   g 1                           # will be taken `g` from outer scope
+   .f 1                          # `f` will be assigned in the function scope (starting dot)
   a + ' ' + b
   
 # Calling Func without arguments will output the string 'Hello world'
@@ -299,12 +301,25 @@ a 'hello'  # calls `refresh_containers a`
    Furtherly, when such substitute separate word is appeared
    it will be converted to its packed content */
 custom_condition <- a=b ?
-custum_func_call <- Func arg1 arg2
+custom_func_call <- Func arg1 arg2
 
 # Using
 custom_condition c: b ; c: a   # will be converted to `a=b ? c: b ; c: a`
-custum_func_call arg3          # will be converted to `Func arg1 arg2 arg3`
+custom_func_call arg3          # will be converted to `Func arg1 arg2 arg3`
 /* Conversion occured before the whole instruction starting execution */
+
+# With replace
+# Import JQuery:
+@'https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js'
+
+# Substitute with replace rule:
+$1 <- $ '<$1>'. .html $2 .appendTo $3
+
+# Aya substitution instruction (every expression will be put to appropriate $index
+$1 div 'html content' document.body
+
+#Output JS:
+#$('<div>').html('html content').appendTo(document.body);
 ```
 
 ### Import
@@ -317,6 +332,9 @@ modules_set @'path_to_local.js'
 
 # Local Aya (injecting JS compilation directly to compiled JS)
 @'local-path.aya'
+
+# Local Aya (Injecting Aya code right here, right now)
+@'local-path.aya'.
 ```
 
 ### Try-catch, immediate call & double comma

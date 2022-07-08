@@ -1172,50 +1172,50 @@ class Aya {
 							lines = aya.aya_glob_data.lines
 							helper2 = _.aya_glob_data.lines[struct_index].split(`@${entity+dot}`)
 							if(!helper2[1]) helper2.pop()
-								helper = _.aya_glob_data.struct[d][1].splice(index+1)
-								if(next_entity==comma) helper.shift()
+							helper = _.aya_glob_data.struct[d][1].splice(index+1)
+							if(next_entity==comma) helper.shift()
+							_.aya_glob_data.struct[d][1].pop()
+							_.aya_glob_data.struct[d][1].pop()
+							if(_.aya_glob_data.struct[d][1][_.aya_glob_data.struct[d][1].length-1]==comma) {
 								_.aya_glob_data.struct[d][1].pop()
-								_.aya_glob_data.struct[d][1].pop()
-								if(_.aya_glob_data.struct[d][1][_.aya_glob_data.struct[d][1].length-1]==comma) {
-									_.aya_glob_data.struct[d][1].pop()
-									if(helper2[0]){
-										helper2[0] = helper2[0].trim()
-										helper2[0] = helper2[0].substring(0,helper2[0].length-1).trim()																		
-									}
-									dots_count--
-									index--								
-									_.entity_index--																	
-									_.writes.pop()																		
+								if(helper2[0]){
+									helper2[0] = helper2[0].trim()
+									helper2[0] = helper2[0].substring(0,helper2[0].length-1).trim()																		
 								}
-								if(tab) for(let i in aya.aya_glob_data.struct){
-									aya.aya_glob_data.struct[i][0]+=tab
-								}
-								if(helper[0]) {								
-									aya.aya_glob_data.struct=aya.aya_glob_data.struct.concat([[tab,helper,['',[],[]]]])
-								}
-								_.aya_glob_data.struct.splice(d+1,0,...aya.aya_glob_data.struct)						
-								if(next_entity==comma){
-									helper2[1]=helper2[1].trim().substring(1).trim()									
-								}								
-								helper2.splice(1,0,...aya.aya_glob_data.lines)
-								if(!helper2[0]) helper2.shift()
-								_.aya_glob_data.lines.splice(struct_index,1)
-								_.aya_glob_data.lines.splice(struct_index,0,...helper2)
-								if(!_.aya_glob_data.struct[d][1][0]) {
-									_.aya_glob_data.struct.splice(d,1)
-								}
-								rangeStruct = _.aya_glob_data.struct								
-								if(prev_entity_obj.scope_start) return_to_parent_scope()
 								dots_count--
-								index--							
-								_.entity_index--								
-								_.writes.pop()
-								line = rangeStruct[d]
-								next_line = rangeStruct[d+1]
-								tab = line[0]
-								hasCommaInLine = null
-								hasCommaInLinePrev = null												
-								continue
+								index--								
+								_.entity_index--																	
+								_.writes.pop()																		
+							}
+							if(tab) for(let i in aya.aya_glob_data.struct){
+								aya.aya_glob_data.struct[i][0]+=tab
+							}
+							if(helper[0]) {								
+								aya.aya_glob_data.struct=aya.aya_glob_data.struct.concat([[tab,helper,['',[],[]]]])
+							}
+							_.aya_glob_data.struct.splice(d+1,0,...aya.aya_glob_data.struct)						
+							if(next_entity==comma){
+								helper2[1]=helper2[1].trim().substring(1).trim()									
+							}								
+							helper2.splice(1,0,...aya.aya_glob_data.lines)
+							if(!helper2[0]) helper2.shift()
+							_.aya_glob_data.lines.splice(struct_index,1)
+							_.aya_glob_data.lines.splice(struct_index,0,...helper2)
+							if(!_.aya_glob_data.struct[d][1][0]) {
+								_.aya_glob_data.struct.splice(d,1)
+							}
+							rangeStruct = _.aya_glob_data.struct								
+							if(prev_entity_obj.scope_start) return_to_parent_scope()
+							dots_count--
+							index--							
+							_.entity_index--								
+							_.writes.pop()
+							line = rangeStruct[d]
+							next_line = rangeStruct[d+1]
+							tab = line[0]
+							hasCommaInLine = null
+							hasCommaInLinePrev = null												
+							continue
 						} else if(/^(http(s?)):\/\//i.test(helper)){
 							await aya_import(helper)
 							for(let i in window) if(!_.window[i]) _.window[i]=window[i]
@@ -1455,7 +1455,7 @@ class Aya {
 
 
 					//-- continue chaining
-					if(!['...','..','.'].includes(entity)&&dots_count_before==1 && action_level('chain')){
+					if(!['...','..','.'].includes(entity)&&dots_count_before==1 && action_level('chain') && (!lineFirstEntity || prev_line_lower_tab())){
 						if(!prev_entity_obj.start.key_expression){
 							entity_obj.continue_chain=true
 							if(action_level('chain')){
@@ -1551,7 +1551,8 @@ class Aya {
 						&& recent_action()[0]!='func_call' 
 						&& !next_continue_chain() && !entity_obj.next_entity_operator && (!operator(-1)||recentAction[0]=='key_expression')
 						&& !entity_obj.next_starts_key_expression) 
-						|| colon_count==2 ){
+							|| colon_count==2 ){
+
 						//-- func declaration
 						recentAction = recent_action()[0]	
 						if(anon_func.includes(entity) || 
@@ -2044,7 +2045,11 @@ class Aya {
 					}
 
 
-					if(next_entity&&next_entity[0]==dot&&next_entity[1]!=dot && !action_level('chain')){
+					if(next_entity&&next_entity[0]==dot&&next_entity[1]!=dot && !action_level('chain') && func_decl()!=1 && (!lineLastEntity||next_line_higher_tab())){
+						if(recentAction[0]=='func_call'){
+							finish_recent_action()
+							end(true)
+						}
 						action('chain',true)
 						if(!operator(-1)) start()
 					}
@@ -2331,8 +2336,8 @@ class Aya {
 					}
 					n = _.writes[i+1]
 					loop_data.v1 = {entity:n.entity}
-					for(range of _.exprs[n.level.expr]){
-						if(range[0]>loop_data_range[0] && range[1]<loop_data_range[1]){					
+					for(range of _.exprs[n.level.expr+1]){
+						if(range[0]>loop_data_range[0] && range[1]<loop_data_range[1]){				
 							if(!c) {
 								if(!for_in) loop_data.expr = await parse_range(range[0],range[1],false)
 								else loop_data.v1 = {entity:_.writes[range[0]].entity}
@@ -2962,12 +2967,12 @@ class Aya {
 				}
 			}
 			while(true){
-				m = line.match(/[^\\`]`/g)
+				m = line.match(/(^|[^\\`])`/g)
 				if(m&&m.length % 2 != 0){
 					line+="\n"		
 					l++
 					while(lines[l]){
-						m = /[^\\`]`/.exec(lines[l])
+						m = /(^|[^\\`])`/.exec(lines[l])
 						if(!m) line+=lines[l]+"\n"
 						else{
 							line+=lines[l]
@@ -3603,10 +3608,11 @@ class Aya {
 				entity_type = entity_defined.__data__.type
 			}
 			literal_type = _.literal(entity)
-			if(entity_defined&&entity_type!='function'||literal_type=='string'||['T','F','N'].includes(entity)) {
+			if((entity_defined&&entity_type!='function') || ['string','integer'].includes(literal_type) || entity_type == 'integer' || ['T','F','N'].includes(entity)) {
 				if(![null,'integer','string','bool'].includes(entity_type)&&literal_type!='string'&&!['T','F','N'].includes(entity)) 
 					_.error(8,entity)
 				else converted+=`[${entity}]`
+				chain_def=''
 			}
 			else converted+=`.${entity}`
 		}

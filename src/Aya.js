@@ -77,7 +77,7 @@ class Aya {
 					_.operators.push(_.entities[a][b])
 			}
 		}
-		if(run_workout){
+		if(run_workout&&!window.AYA_runAndPause){
 			 _.helper()
 			_.workout()			 
 		}
@@ -165,7 +165,7 @@ class Aya {
 				lines = script.replace(/\r/g,"").split("\n").filter(v=> v!='')
 				struct = _.linesToStruct(lines)
 				_.aya_glob_data.struct = struct
-				if(aya_script) return true
+				if(aya_script&&!_.compile_aya_script) return true
 				await parseScope({parentScope:_.window,struct,range:0})
 				js = await _.prepareJS()
 				if(!_.terminated){
@@ -192,7 +192,7 @@ class Aya {
 		let set_get = ['G','S'], anon_func = ['A',tilda]
 		let hasCommaInLine = null, hasCommaInLinePrev = null, hasDoubleCommaInLine = null, hasDoubleCommaInLinePrev = null
 		let else_if, next_is, colon_count, loop_to, loop_data, for_in_loop, dots_count, middle_dots_count, dots_count_before, hidden, helper
-		let last_expr, starting_entity_obj, chain_assignment, substituting, count_expressions=null, no_define
+		let last_expr, starting_entity_obj, chain_assignment, substituting, count_expressions=null, no_define, gathering_string
 		let lineLastEntity, lineFirstEntity, nextEntityOperator, next_line_first_entity
 		if(aya_script) _.aya_script=aya_script
 
@@ -1183,65 +1183,90 @@ class Aya {
 					}
 
 					//-- import
-					if(literal()=='string' && prev_entity=='@'){
+					if(literal()=='string' && prev_entity=='@' || gathering_string){
 						entity_obj.hidden = true
-						prev_entity_obj.import = entity
-						prev_entity_obj.hidden = true
-						helper = _.cutSides(entity)
-						if(dots_count==1&&helper.substring(helper.length-4)=='.aya'){
-							helper = await _.loadScript(helper)
-							aya = new Aya(false)
-							aya.process(helper)
-							lines = aya.aya_glob_data.lines
-							helper2 = _.aya_glob_data.lines[struct_index].split(`@${entity+dot}`)
-							if(!helper2[1]) helper2.pop()
-							helper = _.aya_glob_data.struct[d][1].splice(index+1)
-							if(next_entity==comma) helper.shift()
-							_.aya_glob_data.struct[d][1].pop()
-							_.aya_glob_data.struct[d][1].pop()
-							if(_.aya_glob_data.struct[d][1][_.aya_glob_data.struct[d][1].length-1]==comma) {
-								_.aya_glob_data.struct[d][1].pop()
-								if(helper2[0]){
-									helper2[0] = helper2[0].trim()
-									helper2[0] = helper2[0].substring(0,helper2[0].length-1).trim()																		
+						if(!gathering_string){
+							if(!operator(next_entity)){							
+								prev_entity_obj.import = entity
+								prev_entity_obj.hidden = true
+								helper = _.cutSides(entity)
+								if(dots_count==1&&helper.substring(helper.length-4)=='.aya'){
+									helper = await _.loadScript(helper)
+									aya = new Aya(false)
+									aya.process(helper)
+									lines = aya.aya_glob_data.lines
+									helper2 = _.aya_glob_data.lines[struct_index].split(`@${entity+dot}`)
+									if(!helper2[1]) helper2.pop()
+									helper = _.aya_glob_data.struct[d][1].splice(index+1)
+									if(next_entity==comma) helper.shift()
+									_.aya_glob_data.struct[d][1].pop()
+									_.aya_glob_data.struct[d][1].pop()
+									if(_.aya_glob_data.struct[d][1][_.aya_glob_data.struct[d][1].length-1]==comma) {
+										_.aya_glob_data.struct[d][1].pop()
+										if(helper2[0]){
+											helper2[0] = helper2[0].trim()
+											helper2[0] = helper2[0].substring(0,helper2[0].length-1).trim()																		
+										}
+										dots_count--
+										index--								
+										_.entity_index--																	
+										_.writes.pop()																		
+									}
+									if(tab) for(let i in aya.aya_glob_data.struct){
+										aya.aya_glob_data.struct[i][0]+=tab
+									}
+									if(helper[0]) {								
+										aya.aya_glob_data.struct=aya.aya_glob_data.struct.concat([[tab,helper,['',[],[]]]])
+									}
+									_.aya_glob_data.struct.splice(d+1,0,...aya.aya_glob_data.struct)						
+									if(next_entity==comma){
+										helper2[1]=helper2[1].trim().substring(1).trim()									
+									}								
+									helper2.splice(1,0,...aya.aya_glob_data.lines)
+									if(!helper2[0]) helper2.shift()
+									_.aya_glob_data.lines.splice(struct_index,1)
+									_.aya_glob_data.lines.splice(struct_index,0,...helper2)
+									if(!_.aya_glob_data.struct[d][1][0]) {
+										_.aya_glob_data.struct.splice(d,1)
+									}
+									rangeStruct = _.aya_glob_data.struct								
+									dots_count--
+									index--							
+									_.entity_index--								
+									_.writes.pop()
+									line = rangeStruct[d]
+									next_line = rangeStruct[d+1]
+									tab = line[0]
+									hasCommaInLine = null
+									hasCommaInLinePrev = null												
+									continue
+								} else if(/^(http(s?)):\/\//i.test(helper) || dots_count==1&&helper.substring(helper.length-3)=='.js'){
+									await aya_import(helper)
+									for(let i in window) if(!_.window[i]) _.window[i]=window[i]
 								}
-								dots_count--
-								index--								
-								_.entity_index--																	
-								_.writes.pop()																		
+							} else {
+								gathering_string=_.entity_index
+								hidden=true
+								prev_entity_obj.hidden = true
+								entity_obj.hidden = true
 							}
-							if(tab) for(let i in aya.aya_glob_data.struct){
-								aya.aya_glob_data.struct[i][0]+=tab
-							}
-							if(helper[0]) {								
-								aya.aya_glob_data.struct=aya.aya_glob_data.struct.concat([[tab,helper,['',[],[]]]])
-							}
-							_.aya_glob_data.struct.splice(d+1,0,...aya.aya_glob_data.struct)						
-							if(next_entity==comma){
-								helper2[1]=helper2[1].trim().substring(1).trim()									
-							}								
-							helper2.splice(1,0,...aya.aya_glob_data.lines)
-							if(!helper2[0]) helper2.shift()
-							_.aya_glob_data.lines.splice(struct_index,1)
-							_.aya_glob_data.lines.splice(struct_index,0,...helper2)
-							if(!_.aya_glob_data.struct[d][1][0]) {
-								_.aya_glob_data.struct.splice(d,1)
-							}
-							rangeStruct = _.aya_glob_data.struct								
-							dots_count--
-							index--							
-							_.entity_index--								
-							_.writes.pop()
-							line = rangeStruct[d]
-							next_line = rangeStruct[d+1]
-							tab = line[0]
-							hasCommaInLine = null
-							hasCommaInLinePrev = null												
-							continue
-						} else if(/^(http(s?)):\/\//i.test(helper) || dots_count==1&&helper.substring(helper.length-3)=='.js'){
-							await aya_import(helper)
-							for(let i in window) if(!_.window[i]) _.window[i]=window[i]
 						}
+						if(gathering_string){
+							entity_obj.gathering_string=true							
+							if(lineLastEntity){
+								helper = gathering_string
+								_.writes[gathering_string-1].gathered = true
+								_.writes[gathering_string-1].import = ''
+								while(helper<=_.entity_index){
+									_.writes[gathering_string-1].import += _.writes[helper].entity
+									helper++
+								}
+								gathering_string=false
+								hidden=false
+								entity_obj.hidden = false
+								entity_obj.entity=''
+							}
+						}						
 					}
 
 					//-- start if scope
@@ -1737,7 +1762,7 @@ class Aya {
 
 					//-- return statement
 					if(!entity_obj.start.immediate_func_call && !entity_obj.default && lineFirstEntity&&(not_assignment_start()||entity_obj.anonimous)&&func_decl()==2 && (!func_call_start() || dots_count==1 || lineLastEntity&&dots_count) && scope_tab()==tab && !next_line_higher_tab() && !entity_obj.unassignable && !entity_obj.is_loop) {
-						if((recent_action()[0]!='object_assignment'||entity_obj.anonimous) && !_.special_operators.includes(next_entity)){
+						if((recent_action()[0]!='object_assignment'||entity_obj.anonimous) && !_.special_operators.includes(next_entity) && !['@'].includes(entity)){ 
 							entity_obj.return=true							
 						}
 						if(dots_count) dots_count--
@@ -2140,27 +2165,36 @@ class Aya {
 									helper= entity_obj.start.at[w][l]
 									n=w!='var_assignment' ? entity_obj.start.at[w][l] : _.entity_index
 									if(w!='var_assignment'&&(helper>n)) continue
-									let _scope = null,is_new,is_import,is_emit,emit,is_anonimous							
+									let _scope = null,is_new,is_import,is_emit,emit,is_anonimous,check_scope_start							
 									if(w=='var_assignment'){
 										if(entity_obj.chain) _scope = entity_obj.defined
-										else if(!entity_obj.end.func_call) _scope = _.entityDefined(entity_obj.scope,entity_obj.entity,'function')							
+										else if(!entity_obj.end.func_call) _scope = _.entityDefined(entity_obj.scope,entity_obj.entity,'function')
+										else if(entity_obj.end.func_decl){
+											check_scope_start=true
+										}							
 										n=helper
-										while(n<=_.entity_index){																			
+										while(n<=_.entity_index){																		
 											if(_.writes[n].assignment.stage==3 || _.writes[n].assignment.stage==2 && _.writes[n].end.var_assignment==_.writes[helper].level.var_assignment) {
 												if(_.writes[n].entity==lt2){
 													is_new = true
 													_scope = _.entityDefined(entity_obj.scope,_.writes[n+1].entity,'function')
+													break
 												}											
-												if(_.writes[n].entity=='@'){
+												if(_.writes[n].entity=='@'&&!_.writes[n+1].start.func_decl&&!_.writes[n+1].start.func_call){
 													is_import = true
+													break
 												}
 												if(_.writes[n].entity==gt2){
 													is_emit = true
 													_.writes[n].hidden=true
 													_.writes[_.entity_index].hidden=true
+													break
 												}																					
 											}
 											n++
+											if(check_scope_start && (_scope=_.writes[n].scope_start)){
+												break
+											}	
 										}
 										if(is_new&&_scope){
 											if(_scope.this){
@@ -2264,7 +2298,7 @@ class Aya {
 		let js='',helper, h2, initial, tabs_repeated,add_tab=0,current_scope,includes_scope_name,closed_actions_count, addBottomComments, anonimous_closed
 		let close_assoc={func_call:')',array_assignment:']',array_literal:']',func_decl:"}",if:"}",else:"}",key_expression:']',object_assignment:"}",loop:"}",immediate_call:')',class:"}"}
 		let close_priority = ['func_decl','immediate_call'], to_close=[], index, range, aya_import, classes=[], initiates=[]
-		
+		let aya_import_string = `window.aya_import = async sr=> (await new Promise(r=>{let d=document,s=d.createElement('script');s.async=true;s.onload=()=>r();s.src=sr;d.getElementsByTagName('head')[0].appendChild(s)}));\n`
 		function debug_js(name,w,a='push',scope_id=0,prefix='',suffix=''){			
 			if(a!='release'){
 				let t,e				
@@ -2821,8 +2855,8 @@ class Aya {
 								js+=instruction_ends(js)
 								js+=debug_js('assignment',w,'release',current_scope.__data__.id,instruction_ends(js)+repeat(w))
 							}
-						} else if(w.has_semicolon) {
-							js+=";"
+						} else if(w.has_semicolon) {							
+							if(w.entity)js+=";"
 							addBottomComments=true
 							w.has_semicolon=false
 						}						
@@ -2914,14 +2948,39 @@ class Aya {
 				if(w.entity=='@'&&w.import){
 					helper = _.cutSides(w.import)
 					if(helper.substring(helper.length-4)=='.aya'){
-						helper = await _.loadScript(helper)
-						aya = new Aya(false)
-						js += await aya.workout(helper)
+						if(w.gathered){
+							if(!aya_import){
+								initiates.push(aya_import_string)
+								aya_import=true
+							}
+							helper=false						
+							let scripts = document.getElementsByTagName('script')
+							for(let script of scripts){
+								if(script.src.includes('Aya.js')){
+									helper = script.src.split('?')[0]
+									break
+								}
+							}
+							if(!helper) console.error('Aya.js script has not found. Have you renamed it?')						
+							if(!_.imported[helper]){
+								js+="\n"+repeat(w,false,true)+`window.AYA_runAndPause = true;`+"\n"
+								js+="\n"+repeat(w,false,true)+`await aya_import('${helper}');`+"\n"
+								_.imported[helper] = true
+							}
+							helper = w.import
+							js+="\n"+repeat(w,false,true)+`window.aya_script = await AYA.loadScript(${helper});`+"\n"
+							js+="\n"+repeat(w,false,true)+`AYA.compile_aya_script = true;`+"\n"
+							js+="\n"+repeat(w,false,true)+`window.aya_js = await AYA.workout(window.aya_script);`+"\n"
+						} else {
+							helper = await _.loadScript(helper)
+							aya = new Aya(false)
+							js += await aya.workout(helper)
+						}
 					}
 					else if(/^(http(s?)):\/\//i.test(helper)){
 						if(!_.imported[helper]){
 							if(!aya_import){
-								initiates.push(`window.aya_import = async sr=> (await new Promise(r=>{let d=document,s=d.createElement('script');s.async=true;s.onload=()=>r();s.src=sr;d.getElementsByTagName('head')[0].appendChild(s)}));\n`)
+								initiates.push(aya_import_string)
 							}
 							js+="\n"+repeat(w,false,true)+`await aya_import('${helper}');`+"\n"
 							aya_import=true
@@ -3893,4 +3952,4 @@ class Aya {
 	}
 
 }
-window.onload = () => new Aya()
+window.onload = () => window.AYA = new Aya()

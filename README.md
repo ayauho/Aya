@@ -327,14 +327,17 @@ $1 div 'html content' document.body
 # Global JS. Opens ability to use `$` immediatelly in Aya script
 @'https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js'
 
-# Local JS which has export modules. Performed on JS compilation.
+# Local JS which has export modules. Performed immediatelly in Aya script.
 modules_set @'path_to_local.js'
+
+# Local JS which has NO export modules. Performed immediatelly in Aya script.
+@'path_to_local.js'.    # Ending dot here
 
 # Local Aya (injecting JS compilation directly to compiled JS)
 @'local-path.aya'
 
 # Local Aya (Injecting Aya code right here, right now)
-@'local-path.aya'.
+@'local-path.aya'.    # Ending dot here
 ```
 
 ### Try-catch, immediate call & double comma

@@ -1238,7 +1238,7 @@ class Aya {
 							hasCommaInLine = null
 							hasCommaInLinePrev = null												
 							continue
-						} else if(/^(http(s?)):\/\//i.test(helper)){
+						} else if(/^(http(s?)):\/\//i.test(helper) || dots_count==1&&helper.substring(helper.length-3)=='.js'){
 							await aya_import(helper)
 							for(let i in window) if(!_.window[i]) _.window[i]=window[i]
 						}
@@ -2927,7 +2927,7 @@ class Aya {
 							aya_import=true
 							_.imported[helper] = true
 						}
-					}else{
+					}else if(!w.dots_count){
 						js+=repeat(w,false,true)+`await import('${helper}');`+"\n"
 					}
 				}				

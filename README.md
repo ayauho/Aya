@@ -126,7 +126,8 @@ obj2:: k1:'Hello '+'my dear ' k2:'world'  # Values are recognized as single expr
 # Instruction bellow outputs 'Hello my dear world' in dev. console
 log obj2.k1 + obj2.k2
 
-# Nested objects are also defined with :: (two colons) which should be magneted to the key (`two` in this case)
+# Nested objects are also defined with :: (two colons) 
+# which should be magneted to the key (`two` in this case)
 obj3::
    one: 1
    two::

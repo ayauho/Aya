@@ -10,7 +10,7 @@ class Aya {
 		brackets:['(',')','{','}'],
 		special:[').','.(','@','~',',,','?',',','>>','<<','<-']		
 	}
-	special_operators=['>>','<<','<-']	
+	special_operators=['>>','<<','<-','++','--']	
 	reserved = ['_','..','::','.','D','C','G','S','A']
 	dotContains = ['.','..',').','.(']
 	magnetLeft = [':']
@@ -1725,7 +1725,7 @@ class Aya {
 
 					//-- func call not started yet but needs to start
 					helper = func_call_start(true)
-					if(!entity_obj.start.var_assignment && !chain_assignment && !entity_obj.start.func_decl && func_call_start(true) && !_.entities.words.includes(prev_entity) && assignable() && helper && (helper.__data__.type=='function' || helper.__data__.funcVar) && (dots_count || !func_call() || !lineLastEntity)){
+					if(!entity_obj.start.var_assignment && !chain_assignment && !entity_obj.start.func_decl && func_call_start(true) && !_.entities.words.includes(prev_entity) && assignable() && helper && (helper.__data__.type=='function' || helper.__data__.funcVar) && (dots_count || !func_call() || !lineLastEntity) || entity_obj.type.concrete=='function'){
 						action('func_call',true)
 						if(dots_count)dots_count--
 						if(!operator(-1)) {
@@ -1739,8 +1739,8 @@ class Aya {
 
 					//-- return statement
 					if(!entity_obj.start.immediate_func_call && !entity_obj.default && lineFirstEntity&&(not_assignment_start()||entity_obj.anonimous)&&func_decl()==2 && (!func_call_start() || dots_count==1 || lineLastEntity&&dots_count) && scope_tab()==tab && !next_line_higher_tab() && !entity_obj.unassignable && !entity_obj.is_loop) {
-						if((recent_action()[0]!='object_assignment'||entity_obj.anonimous) && !_.special_operators.includes(next_entity)){
-							entity_obj.return=true
+						if((recent_action()[0]!='object_assignment'||entity_obj.anonimous) && !_.special_operators.includes(next_entity) && !_.entities.assignment.includes(next_entity)){
+							entity_obj.return=true							
 						}
 						if(dots_count) dots_count--
 					}
@@ -1749,7 +1749,7 @@ class Aya {
 					//-- force return					
 					if(func_decl()==2){
 						if(tab==scope_tab()&&lineFirstEntity) scope_line_first_entity_index = _.entity_index						
-						if(lineLastEntity&&(!func_call_start()&&dots_count==1|| func_call_start()&&dots_count==2 )){
+						if((lineLastEntity&&(!func_call_start()&&dots_count==1|| func_call_start()&&dots_count==2 )) && !entity_obj.unassignable){
 							if(scope_line_first_entity_index == _.entity_index) entity_obj.return = true
 							else _.writes[scope_line_first_entity_index].return = true
 						}
@@ -3309,7 +3309,11 @@ class Aya {
 		else if(['T','F'].includes(entity)) type = 'boolean'
 		else if(entity=='U') type = 'undefined'
 		else if(entity=='I') type='Infinity'
-		else if(entity[0]=='/') type='regex'
+		else if(entity[0]=='/') {
+			let parts = entity.split('.')
+			if( ['exec','test'].includes(parts[parts.length-1])) type='function'
+			else type='regex'
+		}
 		else type = false
 		return type
 	}
@@ -3348,12 +3352,10 @@ class Aya {
 			if(_scope[entity_]&&!_scope[entity_].__data__ && ['function','object'].includes(typeof _scope[entity_])){
 				return _.defineEntity(scope, entity,typeof _scope[entity_],true)
 			}
-			if(_scope[entity_]&&(!_scope[entity_].__data__.inProcess||in_process)&&(!not_object_scope || (!_scope.__data__.objectScope && _scope.__data__.type!='object')) || _scope.is_window_scope && typeof window[entity_]!='undefined' ) {
-				if(!include_assignment || !(assignments.scope&&_scope.__data__.id == assignments.scope.__data__.id&&includes))
-					if(_scope[entity_]&&!_scope[entity_].__data__.maybe || _scope.is_window_scope) {
+			if(_scope[entity_] && (!_scope[entity_].__data__.inProcess||in_process) && (!not_object_scope || (!_scope.__data__.objectScope && _scope.__data__.type!='object')) || _scope.is_window_scope && typeof window[entity_]!='undefined' ) {
+				if(!include_assignment || !(assignments.scope&&_scope.__data__.id == assignments.scope.__data__.id&&includes))					
 						r = _scope.is_window_scope&&(!_scope[entity_])?{__data__:{parentScope:_scope,type:typeof window[entity_],inWindow: window[entity_]},entity:entity_}:_scope[entity_]
 						break
-					}
 			}
 			if(_scope.__data__.inWindow&&_scope.__data__.inWindow[entity_]){
 				r = {__data__:{parentScope:_scope,type:typeof _scope.__data__.inWindow[entity_],inWindow: _scope.__data__.inWindow[entity_],entity:entity_}}
@@ -3399,7 +3401,6 @@ class Aya {
 		}
 		if(!scope.__data__.entity!='this'&&entity_!='this' && !scope[entity_] && !dont_assign && type!='function' && !scope.__data__.objectScope || type=='arrow_function'){
 			if(!as_argument) {
-				if(entity_=='entities'){throw{}}
 				if(!scope.__data__.assignments.includes(entity_)){
 					scope.__data__.assignments.push(entity_)
 				}
@@ -3580,22 +3581,26 @@ class Aya {
 			}
 			literal_type = _.literal(descendant)
 			if(!literal_type) {
-				if(parent_defined&&eval( `window.${parent} && typeof window.${parent}.${descendant}=='function'`) || typeof [parent][descendant]=='function' || ['function','object'].includes(parent_type) && typeof (function(){})[descendant]=='function' || typeof String('')[descendant]=='function' || typeof document.body[descendant]=='function'){					
-					descendant_type='function'
-					descendant_defined = {}
-					_.createScopeTemplate(descendant_defined,parent_defined,descendant_type)				
-				} else if(typeof Object[descendant]=='object'){
-					descendant_type='object'
-					descendant_defined = {}
-					_.createScopeTemplate(descendant_defined,parent_defined,descendant_type)
-				} else if(typeof ([])[descendant]=='number'){
-					descendant_type='number'
-					descendant_defined = {}
-					_.createScopeTemplate(descendant_defined,parent_defined,descendant_type)
-				} else {
-					descendant_defined = _.entityDefined(initial_scope,descendant,'window')
+				
+				descendant_defined = _.entityDefined(initial_scope,descendant,'window')
+
+				if(!descendant_defined) {
+					let _parent = parent[0]!='['||!isNaN(parseInt(parent))?`[${parent}]`:(parent[0]!='['?'.':'')+`${parent}`
 					
-					if(!descendant_defined) {
+					if(parent_defined&&eval( `try{window${_parent} && typeof window${_parent}${!isNaN(parseInt(descendant))?`[${descendant}]`:`.${descendant}`}=='function'}catch(err){}`) || typeof [parent][descendant]=='function' || ['function','object'].includes(parent_type) && typeof (function(){})[descendant]=='function' || typeof String('')[descendant]=='function' || typeof document.body[descendant]=='function'){					
+						descendant_type='function'
+						descendant_defined = {}
+						_.createScopeTemplate(descendant_defined,parent_defined,descendant_type)				
+					} else if(typeof Object[descendant]=='object'){
+						descendant_type='object'
+						descendant_defined = {}
+						_.createScopeTemplate(descendant_defined,parent_defined,descendant_type)
+					} else if(typeof ([])[descendant]=='number'){
+						descendant_type='number'
+						descendant_defined = {}
+						_.createScopeTemplate(descendant_defined,parent_defined,descendant_type)
+					} else { 
+
 						if((!['object','function'].includes(parent_type) || !parent_defined) && parent!='this' && !prev_descendant_defined && !as_argument) {
 							force_assign=true
 						}
@@ -3603,12 +3608,11 @@ class Aya {
 							right_var_name=true
 						}
 						else descendant = '`'+descendant+'`'
-					}	
-					else if(descendant_defined) {
-						descendant_type = descendant_defined.__data__.type
-						if( descendant_type == 'integer' || parent_type=='array' ) parent_type='array'
-						else if(!['function','object','array'].includes(descendant_type)) {
-						}
+					}
+				} else  {
+					descendant_type = descendant_defined.__data__.type
+					if( descendant_type == 'integer' || parent_type=='array' ) parent_type='array'
+					else if(!['function','object','array'].includes(descendant_type)) {
 					}
 				}
 			} else {
@@ -3709,10 +3713,16 @@ class Aya {
 						if(parent[0]=='[') parent = _.cutSides(parent)
 						if(_.stringLiteral(parent)) parent = _.cutSides(parent)
 						parent_defined = _.entityDefined(scope,parent,parts[0])
-						if(!parent_defined && !hasIfElse && !descendant_defined){
+						if(!parent_defined){
 							if(_.stringLiteral(parent[0])) parent = _.cutSides(parent)					
-							scope = _.defineEntity(scope,parent,null,!i)
-							scope.__data__.objectScope = true													
+							if(hasIfElse || descendant_defined) parent = `[${parent}]`														
+							if(!scope[parent]){
+								let _scope = {}
+								_.createScopeTemplate(_scope,scope.__data__.parentScope,scope.__data__.type)
+								_.implementScope(scope,parent,_scope)	
+								scope = _.defineEntity(scope,parent,null,!i,false,false,true)
+								scope.__data__.objectScope = true
+							} else scope = scope[parent]
 						} else scope = parent_defined
 					} else {
 						if(descendant_type=='function') chain_def='func_call'

@@ -218,11 +218,11 @@ a == b ? log 'do something'
 # != is !== in JS (strict inequality)
 a != b ? log 'do something'
 
-# Exclamation mark magneted right to entity is invesrion (works similar as in JS)
+# Exclamation mark magneted right to entity is inversion (works similar as in JS)
 # Here we ask: "Is `a` not equal to NOT (inversed) `b`?"
 a ! !b ? log 'do something'
 
-/* Other relationsl operators:
+/* Other relational operators:
    >= <= > <
    look and work as usual */
 ```

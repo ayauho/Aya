@@ -65,7 +65,7 @@ class Aya {
 	assoc = {array:'[]',object:'{}',integer:'0',string:"''",float:'0.0',bool:'false'}
 	scope_names = ['func_decl','if','else','object_assignment','loop','class']	
 	
-	constructor(run_workout=true){
+	constructor(run_workout=true,injected={}){
 		let _ = this
 		_.test = false
 		_.allSigns = []
@@ -77,8 +77,9 @@ class Aya {
 					_.operators.push(_.entities[a][b])
 			}
 		}
-		if(run_workout&&!window.AYA_runAndPause){
-			 _.helper()
+		_.injected=injected
+		_.helper()
+		if(run_workout){
 			_.workout()			 
 		}
 	}
@@ -117,6 +118,7 @@ class Aya {
 		_.terminated=false
 		_.initiated={log:0,save_log:0,release_logs:0}
 		_.window = Object.assign({},window)
+		_.window['this'] = _.window
 		_.window.is_window_scope = true
 		_.createScopeTemplate(_.window,null,'object')
 		for(let f of ['log','save_log','release_logs']) 
@@ -130,6 +132,9 @@ class Aya {
 		else scripts = document.querySelectorAll("script[type=aya]")	
 		for(script of scripts){
 			_.init()
+			if(Object.keys(_.injected)){
+				for(let k in _.injected) _[k] = JSON.parse(_.injected[k])
+			}			
 			_.dev = _.storage('dev')		
 			prod=false
 			skip_load=false
@@ -168,6 +173,7 @@ class Aya {
 				if(aya_script&&!_.compile_aya_script) return true
 				await parseScope({parentScope:_.window,struct,range:0})
 				js = await _.prepareJS()
+				if(_.compile_aya_script) return js
 				if(!_.terminated){
 					if(_.eval) eval(js)
 					_.storage(true,'js',script_name,_.version,js)
@@ -176,14 +182,13 @@ class Aya {
 					_.storage(true,'count',script_name,_.version,count)
 					if(_.dev) console.log(`%cVersion: ${_.version}(${count})`,'color:lightgreen;')
 				}				
-				if(_.dev) console.log(js)
 				_.aya_glob_data.scopes = _.window.__data__.childScopes[0]
 			}
 						
 		}		
 	}
 
-	async workout(aya_script){
+	async workout(aya_script,injected={}){
 		let _ = this
 		let struct, lines, scope, range, rangeStruct, parent_scope, _scope, struct_range, struct_index, aya
 		let entity, entity_obj={}, prev_entity_obj={},next_entity, prev_entity, last, index, d, postponed_end=0, line, prev_line, next_line, tab, postpone_finalize_assignment=0
@@ -195,7 +200,8 @@ class Aya {
 		let last_expr, starting_entity_obj, chain_assignment, substituting, count_expressions=null, no_define, gathering_string
 		let lineLastEntity, lineFirstEntity, nextEntityOperator, next_line_first_entity
 		if(aya_script) _.aya_script=aya_script
-
+		_.injected=injected
+			
 //-- Expressions And Actions	
 
 		function start(){		
@@ -251,8 +257,7 @@ class Aya {
 		}
 
 		function action(name,a,follow_expr=false,input=null){
-			if(a===true) {
-				
+			if(a===true) {				
 				_.level[name]++
 				entity_obj.start[name] = _.level[name]
 				let d = [ name, _.entity_index, _.level[name], tab, _.instruction_index, _.line_index, scope ]
@@ -708,7 +713,7 @@ class Aya {
 		}
 
 		function next_line_lower_tab(){
-			 if(has_comma_in_line() || next_entity==q_mark || next_entity==semicolon) return false
+			 if(has_comma_in_line() || (next_entity==q_mark || next_entity==semicolon) && rangeStruct[d][1][index+1]) return false
 			 //if(has_double_comma_in_line()) return false
 			 if(next_line&&next_line[0] < line[0]) return true
 			 return false
@@ -1190,59 +1195,63 @@ class Aya {
 								prev_entity_obj.import = entity
 								prev_entity_obj.hidden = true
 								helper = _.cutSides(entity)
-								if(dots_count==1&&helper.substring(helper.length-4)=='.aya'){
-									helper = await _.loadScript(helper)
-									aya = new Aya(false)
-									aya.process(helper)
-									lines = aya.aya_glob_data.lines
-									helper2 = _.aya_glob_data.lines[struct_index].split(`@${entity+dot}`)
-									if(!helper2[1]) helper2.pop()
-									helper = _.aya_glob_data.struct[d][1].splice(index+1)
-									if(next_entity==comma) helper.shift()
-									_.aya_glob_data.struct[d][1].pop()
-									_.aya_glob_data.struct[d][1].pop()
-									if(_.aya_glob_data.struct[d][1][_.aya_glob_data.struct[d][1].length-1]==comma) {
+								if(!_.imported[helper]){
+									if(dots_count==1&&helper.substring(helper.length-4)=='.aya'){
+										_.imported[helper]=true
+										helper = await _.loadScript(helper)
+										aya = new Aya(false,{imported:JSON.stringify(_.imported)})
+										aya.workout(helper)
+										lines = aya.aya_glob_data.lines
+										helper2 = _.aya_glob_data.lines[struct_index].split(`@${entity+dot}`)
+										if(!helper2[1]) helper2.pop()
+										helper = _.aya_glob_data.struct[d][1].splice(index+1)
+										if(next_entity==comma) helper.shift()
 										_.aya_glob_data.struct[d][1].pop()
-										if(helper2[0]){
-											helper2[0] = helper2[0].trim()
-											helper2[0] = helper2[0].substring(0,helper2[0].length-1).trim()																		
+										_.aya_glob_data.struct[d][1].pop()
+										if(_.aya_glob_data.struct[d][1][_.aya_glob_data.struct[d][1].length-1]==comma) {
+											_.aya_glob_data.struct[d][1].pop()
+											if(helper2[0]){
+												helper2[0] = helper2[0].trim()
+												helper2[0] = helper2[0].substring(0,helper2[0].length-1).trim()																		
+											}
+											dots_count--
+											index--								
+											_.entity_index--																	
+											_.writes.pop()																		
 										}
+										if(tab) for(let i in aya.aya_glob_data.struct){
+											aya.aya_glob_data.struct[i][0]+=tab
+										}
+										if(helper[0]) {								
+											aya.aya_glob_data.struct=aya.aya_glob_data.struct.concat([[tab,helper,['',[],[]]]])
+										}
+										_.aya_glob_data.struct.splice(d+1,0,...aya.aya_glob_data.struct)						
+										if(next_entity==comma){
+											helper2[1]=helper2[1].trim().substring(1).trim()									
+										}								
+										helper2.splice(1,0,...aya.aya_glob_data.lines)
+										if(!helper2[0]) helper2.shift()
+										_.aya_glob_data.lines.splice(struct_index,1)
+										_.aya_glob_data.lines.splice(struct_index,0,...helper2)
+										if(!_.aya_glob_data.struct[d][1][0]) {
+											_.aya_glob_data.struct.splice(d,1)
+										}
+										rangeStruct = _.aya_glob_data.struct								
 										dots_count--
-										index--								
-										_.entity_index--																	
-										_.writes.pop()																		
+										index--							
+										_.entity_index--								
+										_.writes.pop()
+										line = rangeStruct[d]
+										next_line = rangeStruct[d+1]
+										tab = line[0]
+										hasCommaInLine = null
+										hasCommaInLinePrev = null												
+										continue
+									} else if(/^(http(s?)):\/\//i.test(helper) || dots_count==1&&helper.substring(helper.length-3)=='.js'){
+										_.imported[helper]=true
+										await aya_import(helper)
+										for(let i in window) if(!_.window[i]) _.window[i]=window[i]
 									}
-									if(tab) for(let i in aya.aya_glob_data.struct){
-										aya.aya_glob_data.struct[i][0]+=tab
-									}
-									if(helper[0]) {								
-										aya.aya_glob_data.struct=aya.aya_glob_data.struct.concat([[tab,helper,['',[],[]]]])
-									}
-									_.aya_glob_data.struct.splice(d+1,0,...aya.aya_glob_data.struct)						
-									if(next_entity==comma){
-										helper2[1]=helper2[1].trim().substring(1).trim()									
-									}								
-									helper2.splice(1,0,...aya.aya_glob_data.lines)
-									if(!helper2[0]) helper2.shift()
-									_.aya_glob_data.lines.splice(struct_index,1)
-									_.aya_glob_data.lines.splice(struct_index,0,...helper2)
-									if(!_.aya_glob_data.struct[d][1][0]) {
-										_.aya_glob_data.struct.splice(d,1)
-									}
-									rangeStruct = _.aya_glob_data.struct								
-									dots_count--
-									index--							
-									_.entity_index--								
-									_.writes.pop()
-									line = rangeStruct[d]
-									next_line = rangeStruct[d+1]
-									tab = line[0]
-									hasCommaInLine = null
-									hasCommaInLinePrev = null												
-									continue
-								} else if(/^(http(s?)):\/\//i.test(helper) || dots_count==1&&helper.substring(helper.length-3)=='.js'){
-									await aya_import(helper)
-									for(let i in window) if(!_.window[i]) _.window[i]=window[i]
 								}
 							} else {
 								gathering_string=_.entity_index
@@ -1480,8 +1489,14 @@ class Aya {
 								if(!operator(-1)) start()
 								if(dots_count){
 									dots_count--
-									if(!dots_count) finish_recent_action()
-									if(next_entity&&next_entity[0]==dot&&next_entity[1]!=dot) finish_recent_action()
+									if(!dots_count||next_entity&&next_entity[0]==dot&&next_entity[1]!=dot) {
+										finish_recent_action()
+										if(!operator(next_entity)) end(true)
+										if(recent_action()[0]=='chain') {
+											finish_recent_action()
+											if(!operator(next_entity)) end(true)
+										}
+									}
 								}								
 							}
 							entity_obj.chain=true
@@ -2169,7 +2184,7 @@ class Aya {
 									if(w=='var_assignment'){
 										if(entity_obj.chain) _scope = entity_obj.defined
 										else if(!entity_obj.end.func_call) _scope = _.entityDefined(entity_obj.scope,entity_obj.entity,'function')
-										else if(entity_obj.end.func_decl){
+										if(entity_obj.end.func_decl){
 											check_scope_start=true
 										}							
 										n=helper
@@ -2192,7 +2207,7 @@ class Aya {
 												}																					
 											}
 											n++
-											if(check_scope_start && (_scope=_.writes[n].scope_start)){
+											if(check_scope_start && _.writes[n] && (_scope=_.writes[n].scope_start)){
 												break
 											}	
 										}
@@ -2437,8 +2452,8 @@ class Aya {
 					}
 					n = _.writes[i+1]
 					loop_data.v1 = {entity:n.entity}
-					for(range of _.exprs[n.level.expr+1]){
-						if(range[0]>loop_data_range[0] && range[1]<loop_data_range[1]){				
+					for(range of _.exprs[n.level.expr+1]){						
+						if(range[0]>loop_data_range[0] && range[1]<loop_data_range[1]){																
 							if(!c) {
 								if(!for_in) loop_data.expr = await parse_range(range[0],range[1],false)
 								else loop_data.v1 = {entity:_.writes[range[0]].entity}
@@ -2454,6 +2469,9 @@ class Aya {
 				if(w.start.loop_to){
 					if(w.entity_index==w.end.at.loop_to[1]){
 						loop_data.v3.expr = w.variants[1].converted || w.variants[1].entity
+						if( _.entityDefined(w.scope,w.variants[1].entity)){
+							loop_data.v3.entity = loop_data.v3.expr
+						}
 						if(w.variants[1].start.func_call) loop_data.v3.expr+='()' 
 					}
 					else loop_data.v3.expr = await parse_range(w.entity_index,w.end.at.loop_to[1],false,1)
@@ -2464,7 +2482,10 @@ class Aya {
 						entity = w.variants[0].converted || w.variants[0].entity
 						if(!for_in){
 							loop_data.v2.expr = entity
-							if(w.variants[0].start.func_call) loop_data.v2.expr+='()' 
+							if(w.variants[0].start.func_call) loop_data.v2.expr+='()'
+							else if(_.entityDefined(w.scope,w.variants[0].entity)){
+								loop_data.v2.entity = loop_data.v2.expr
+							}
 						}else{
 							loop_data.for_in_entity = entity
 						}
@@ -2488,7 +2509,12 @@ class Aya {
 					loop_data.v3.entity = `$${_.loop_index}to`
 					_.defineEntity(_.writes[from_index].scope,loop_data.v3.entity,null,true)
 				}
-				lets = `let ${loop_data.v2.entity}=${loop_data.v2.expr},${loop_data.v1.entity}=${loop_data.v2.entity},${loop_data.v3.entity}=${loop_data.v3.expr}`
+				let from=''
+				if(loop_data.v2.entity!=loop_data.v2.expr) {
+					from = `${loop_data.v2.entity}=${loop_data.v2.expr},`
+				}
+				lets = `let ${from} ${loop_data.v1.entity}=${loop_data.v2.entity}`
+				if(loop_data.v3.entity!=loop_data.v3.expr) lets += `,${loop_data.v3.entity}=${loop_data.v3.expr}`
 				parsed_v2 = parseFloat(loop_data.v2.expr), parsed_to = parseFloat(loop_data.v3.expr)
 				if(loop_data.expr==loop_data.v1.entity||!loop_data.expr) default_expr=true
 				if(!isNaN(parsed_v2) && !isNaN(parsed_to)){
@@ -2963,18 +2989,27 @@ class Aya {
 							}
 							if(!helper) console.error('Aya.js script has not found. Have you renamed it?')						
 							if(!_.imported[helper]){
-								js+="\n"+repeat(w,false,true)+`window.AYA_runAndPause = true;`+"\n"
-								js+="\n"+repeat(w,false,true)+`await aya_import('${helper}');`+"\n"
 								_.imported[helper] = true
+								js+="\n"+repeat(w,false,true)+`window.AYA_dontRun = true;`+"\n"
+								js+="\n"+repeat(w,false,true)+`await aya_import('${helper+'?'+(+new Date())}');`+"\n"
+								js+="\n"+repeat(w,false,true)+`window.AYA = new Aya(false,{imported:'${JSON.stringify(_.imported)}'})`+"\n"
+								
 							}
 							helper = w.import
-							js+="\n"+repeat(w,false,true)+`window.aya_script = await AYA.loadScript(${helper});`+"\n"
-							js+="\n"+repeat(w,false,true)+`AYA.compile_aya_script = true;`+"\n"
-							js+="\n"+repeat(w,false,true)+`window.aya_js = await AYA.workout(window.aya_script);`+"\n"
+							if(!_.imported[helper]){
+								_.imported[helper]=true
+								js+="\n"+repeat(w,false,true)+`window.aya_script = await AYA.loadScript(${helper});`+"\n"
+								js+="\n"+repeat(w,false,true)+`AYA.compile_aya_script = true;AYA.eval = false;`+"\n"
+								js+="\n"+repeat(w,false,true)+`window.aya_js = await AYA.workout(window.aya_script,{imported:'${JSON.stringify(_.imported)}'});`+"\n"						
+								js+="\n"+repeat(w,false,true)+`eval(window.aya_js);`+"\n"
+							}
 						} else {
-							helper = await _.loadScript(helper)
-							aya = new Aya(false)
-							js += await aya.workout(helper)
+							if(!_.imported[helper]){
+								_.imported[helper]=true
+								helper = await _.loadScript(helper)
+								aya = new Aya(false,{imported:JSON.stringify(_.imported)})
+								js += await aya.workout(helper)
+							}
 						}
 					}
 					else if(/^(http(s?)):\/\//i.test(helper)){
@@ -3053,7 +3088,8 @@ class Aya {
 		for(let C of classes) helper+=C
 		if(helper) helper+="\n"
 		js = helper + js
-		js = js.replace(/\n+/g,"\n")			
+		js = js.replace(/\n+/g,"\n")
+		if(_.dev) console.log(js)		
 		return js
 	}
 
@@ -3230,7 +3266,7 @@ class Aya {
 				let aya = JSON.parse(localStorage.getItem('aya')||{})
 				aya.dev = val
 				localStorage.setItem('aya',JSON.stringify(aya))
-			}
+			}, configurable: true
 		})
 	}
 
@@ -3410,7 +3446,8 @@ class Aya {
 				}									
 				else break
 			}
-			if(_scope.this) return _scope.this
+			if(!_scope) return _.window['this']
+			else if(_scope.this) return _scope.this
 			else return _scope 
 		}
 		
@@ -3952,4 +3989,4 @@ class Aya {
 	}
 
 }
-window.onload = () => window.AYA = new Aya()
+window.onload = () => { if(!window.AYA_dontRun) window.AYA = new Aya()}

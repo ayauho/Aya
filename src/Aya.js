@@ -67,7 +67,6 @@ class Aya {
 	
 	constructor(run_workout=true,injected={}){
 		let _ = this
-		_.test = false
 		_.allSigns = []
 		_.operators = []	
 		for(let a in _.entities){
@@ -313,7 +312,7 @@ class Aya {
 					hidden=false
 				}
 				if(_.scope_names.includes(name)&&!else_if){
-					if(!(name=='object_assignment'&&entity_obj.start.object_assignment)){
+					if(!(name=='object_assignment'&&_.entity_index==ra[1])){
 						return_to_parent_scope()
 					}
 				} else if(name=='func_call'){
@@ -542,7 +541,7 @@ class Aya {
 		}
 
 		function free_to_assign(){
-			return !_.entityDefined(scope,entity_obj,'window') && assignable()
+			return !_.entityDefined(scope,entity_obj,'window',false,'in_process') && assignable()
 		}
 
 		function assignable(){
@@ -809,14 +808,14 @@ class Aya {
 //-- General Management
 		
 		function set_type_to_assignments(type,level){			
-			let n = _.entity_index-1,w=_.writes[n]
+			let n = _.entity_index-1,w=_.writes[n], record = _.record()
 			while(true){
 				w=_.writes[n]
-				if(!w.start.var_assignment) break
+				if(!w.start.var_assignment||w.end.key_expression) break
 				if(w.level.assignment<=level&&w.assignment.stage<3){
 					if(_.writes[n].defined) _.writes[n].defined.__data__.type=type
 					else {
-						if( _.record().entity_indexes.includes(n)) {
+						if( record && record.entity_indexes.includes(n)) {
 							helper = _.records[_.records.length-1].entity_indexes.indexOf(n)
 							_.records[_.records.length-1].defines[helper][3] = type
 						}
@@ -1135,6 +1134,10 @@ class Aya {
 						entity=entity.substring(1)
 						entity_obj.has_backslash=true
 					}
+					if(last_symbol(entity)==backslash){
+						entity=entity.substring(0,entity.length-1)
+						entity_obj.has_end_backslash=true
+					}
 					if(first_symbol(entity)==exclamation&&entity.length>1){
 						entity=entity.substring(1)
 						entity_obj.has_exclamation=true
@@ -1145,6 +1148,11 @@ class Aya {
 						check_all_dots(entity)
 						check_underscore()						
 					}
+					
+					if(prev_entity_obj.next_starts_key_expression){
+						action('key_expression',true)
+					}					
+
 					if(entity==sub){
 						entity_obj.entity = entity
 						entity_obj.scope = scope
@@ -1355,7 +1363,8 @@ class Aya {
 						helper = last_position('class')+1
 						create_child_scope(_.writes[helper].entity,'class')
 						scope.__data__.objectScope=true
-						_.defineEntity(scope,'this','object',true)
+						helper = _.defineEntity(scope,'this','object',true)
+						helper.__data__.entity=='this'
 						create_child_scope('this','object')
 						return_to_parent_scope()
 					} else
@@ -1374,7 +1383,7 @@ class Aya {
 							create_child_scope(null,'loop')
 							helper = _.writes[last_position('loop_from')]
 							action('loop',true,false,{1:helper.entity_index,3:helper.tab,4:helper.instruction_index,5:helper.line_index})
-							release_record_defines(scope,helper.for_in_loop?1:0) 
+							release_record_defines(scope/*,helper.for_in_loop?1:0*/) 
 							for_in_loop=false
 							define_count = 0
 						}						
@@ -1500,7 +1509,7 @@ class Aya {
 					} 
 
 					//-- combination or nested arrays, objects & functions
-					if(!['...','..','.'].includes(entity)&&middle_dots_count&&middle_dots_count!=2&&!literal()&&(!dots_count_before||prev_entity_obj.start.key_expression)){
+					if(!['...','..','.'].includes(entity)&&middle_dots_count&&middle_dots_count!=2&&!literal()&&(!dots_count_before||entity_obj.start.key_expression)){
 						try{
 							entity_obj.recent_action = recent_action()
 							entity = _.chaining(entity_obj,scope)							
@@ -1544,8 +1553,7 @@ class Aya {
 
 
 					//-- continue chaining
-					if(!['...','..','.'].includes(entity)&&dots_count_before==1 && action_level('chain') && (!lineFirstEntity || prev_line_lower_tab())){
-						if(!prev_entity_obj.start.key_expression){
+					if(!['...','..','.'].includes(entity)&&dots_count_before==1 && recent_action()[0]=='chain' && (!lineFirstEntity || prev_line_lower_tab())){
 							entity_obj.continue_chain=true
 							if(action_level('chain')){
 								chain=true		
@@ -1573,7 +1581,6 @@ class Aya {
 							else if(!lineFirstEntity){
 								entity_obj.converted = '.'+entity
 							}
-						}
 					}
 
 					//-- new / static
@@ -1693,7 +1700,7 @@ class Aya {
 							if(assignment_1_or_2()) assignment(3)
 						}
 						//-- start assignment
-						if(!entity_obj.is_loop && !_.inAssignmentProcess(scope, entity) && (!anon_func.includes(entity) && colon_count==2 && !entity || recent_action()[0]!='immediate_func_call'&&recent_action()[0]!='object_assignment' && (!chain||chain_assignment) && (assignable()||chain_assignment) && !func_call_start() && !func_decl_start() && value(next_entity) && (!lineLastEntity || dots_count==2) && !no_define || colon_count==2)){
+						if(!entity_obj.continue_chain &&  !entity_obj.is_loop && !_.inAssignmentProcess(scope, entity) && (!anon_func.includes(entity) && colon_count==2 && !entity || recent_action()[0]!='immediate_func_call'&&recent_action()[0]!='object_assignment' && (!chain||chain_assignment) && (assignable()||chain_assignment) && !func_call_start() && !func_decl_start() && value(next_entity) && (!lineLastEntity || dots_count==2) && !no_define || colon_count==2)){
 							if(dots_count==2) {								
 								assignment_type='array'
 								if(helper = entity_obj.defined) {
@@ -1738,7 +1745,7 @@ class Aya {
 									_.writes[scope_line_first_entity_index].return=false
 							}
 						}
-					}
+					}					
 
 					//-- change assignment stage
 					if(assignment()){
@@ -1793,7 +1800,6 @@ class Aya {
 						}											
 					}
 				
-
 					//-- func call not started yet but needs to start
 					helper = func_call_start(true)
 					if(!entity_obj.start.var_assignment && !chain_assignment && !entity_obj.start.func_decl && func_call_start(true) && !_.entities.words.includes(prev_entity) && assignable() && helper && (helper.__data__.type=='function' || helper.__data__.funcVar) && (dots_count || !func_call() || !lineLastEntity) && prev_entity!='instanceof' || entity_obj.type.concrete=='function'){
@@ -1810,7 +1816,7 @@ class Aya {
 
 					//-- return statement
 					if(!entity_obj.start.immediate_func_call && !entity_obj.default && lineFirstEntity&&(not_assignment_start()||entity_obj.anonimous)&&func_decl()==2 && (!func_call_start() || dots_count==1 || lineLastEntity&&dots_count) && scope_tab()==tab && !next_line_higher_tab() && !entity_obj.unassignable && !entity_obj.is_loop) {
-						if((recent_action()[0]!='object_assignment'||entity_obj.anonimous) && (!entity_obj.next_entity_special || lineLastEntity) && !['@'].includes(entity) && entity_obj.type.concrete!='special'){ 
+						if((recent_action()[0]!='object_assignment'||entity_obj.anonimous) && (!entity_obj.next_entity_special || lineLastEntity) && !['@'].includes(entity) && entity_obj.type.concrete!='special' && entity_obj.type.type!='entity' && !entity_obj.next_starts_key_expression){ 
 							entity_obj.return=true							
 						}
 						if(dots_count) dots_count--
@@ -1875,14 +1881,13 @@ class Aya {
 							return false							
 						}
 					}
-
 					//-- func call finished if next is operator
 					if(entity_obj.next_entity_operator && func_call_start() && !func_call_end()){
 						finish_recent_action()
 					} else
 
 					//-- force let in the scope
-					if(!func_call_start() && (free_to_assign()&&(assignment()==1||func_decl()==2||loop_data) || assignable() && dots_count_before==1) && !chain_assignment && next_is!='key' && !chained() && !_.inAssignmentProcess(entity_obj.defined || scope,entity)){
+					if(!func_call_start() && (free_to_assign()&&(assignment()==1||func_decl()==2||loop_data) || assignable() && dots_count_before==1) && !chain_assignment && next_is!='key' && !chained() && (!_.inAssignmentProcess(entity_obj.defined || scope,entity)||colon_count==2)){
 						if(for_in_loop&&loop_data){
 							define_count++
 							if(define_count==3) no_define=true
@@ -1897,6 +1902,7 @@ class Aya {
 						}
 						if(prev_entity_obj.start.loop_data) entity_obj.loop_iterator=true
 					}
+
 					//-- standard expression
 					if(assignable() || literal() || chained() || entity=='this' || _.entities.words.includes(entity)){												
 						if(!func_call_start()){
@@ -1921,6 +1927,7 @@ class Aya {
 							}
 						}
 					}					
+
 					//-- make gap in chain to put expression					
 					if(entity_obj.next_starts_key_expression){
 						if(recent_action()[0]=='func_call'){
@@ -1928,7 +1935,6 @@ class Aya {
 							postponed_end=0
 							finish_recent_exprs('entity_index',recent_action()[1])
 						}
-						action('key_expression',true)
 					}
 
 					//-- object key-value pairs
@@ -2176,9 +2182,11 @@ class Aya {
 					if(entity_obj.start.func_call && prev_entity=='@'){
 						prev_entity_obj.converted='await '	
 					}
+					
 					//-- finalize key_expression
 					recentAction = recent_action()
-					if(recentAction[0]=='key_expression'&&(_.entity_index>recentAction[1]+1 || next_entity&&next_entity[0]==dot&&next_entity[1]!=dot )&&!operator()&&!entity_obj.next_entity_operator){
+					if(recentAction[0]=='key_expression'&&(_.entity_index>recentAction[1]+1 || next_entity&&next_entity[0]==dot&&next_entity[1]!=dot || chain_assignment )&&!operator()&&!entity_obj.next_entity_operator){
+						console.log( entity_obj )
 						finish_recent_action()
 					}
 
@@ -2190,6 +2198,11 @@ class Aya {
 						action('chain',true)
 						if(!operator(-1)) start()
 					}
+
+					//-- finalize chain
+					if(recent_action()[0]=='chain'&&operator(next_entity)){
+						finish_recent_action()				
+					}				
 
 					if(no_define&&!substituting)no_define=false
 					entity_obj.recent_action = recent_action()[0]
@@ -2285,6 +2298,7 @@ class Aya {
 									n=helper
 									if(w=='func_decl'|| ['object_assignment','array_assignment'].includes(w) && _.writes[n].anonimous) n--									
 									while(_.writes[n] && _.writes[n].assignment.stage<3 && n<=_.entity_index){									
+										if( _.writes[n].continue_chain || _.writes[n].end.key_expression ) break
 										if(is_emit){
 											_.writes[n].hidden = true
 											_.writes[n].defined.__data__.emit = _.writes[_.entity_index].converted||_.writes[_.entity_index].entity
@@ -2295,7 +2309,6 @@ class Aya {
 											if(_scope&&!_.writes[n].assigned){
 												if(_.writes[n].chain&&_.writes[n].defined) {
 													for(let e in _scope) if(e!='__data__') _.writes[n].defined[e] = _scope[e]
-													_.writes[n].defined.__data__.type='object'
 													_.writes[n].assigned=true
 													break
 												}
@@ -2323,6 +2336,7 @@ class Aya {
 					if(colon_count == 2 && !entity_obj.anonimous) {
 						next_is='key'
 					}
+					if(_.stop_at&&_.entity_index==_.stop_at) throw{}
 					if(entity==comma) _.instruction_index++								
 					_.entity_index++
 					index++
@@ -2690,6 +2704,7 @@ class Aya {
 				if(p&&p.catch_error){
 					add_tab++
 				}
+
 				if(w.line_first_entity){
 					if(initial&&!w.start_class || !initial){
 						helper = _.aya_glob_data.struct[w.struct_index][2][1]
@@ -2799,7 +2814,7 @@ class Aya {
 				}					
 //-- entity/converted
 				if(!hidden){
-					if(!w.hidden && (w.scope_start || w.line_first_entity||['?'].includes(w.entity)||['key_value','set_get'].includes(w.obj)||w.start.obj_key) && ![';'].includes(w.entity) && !['else if'].includes(w.converted)) {
+					if(!w.hidden && (w.scope_start || w.line_first_entity||['?'].includes(w.entity)||['key_value','set_get'].includes(w.obj)||w.start.obj_key) && ![';'].includes(w.entity) && !['else if'].includes(w.converted)) {						
 						if(w.preceding_comma){
 							if(js[js.length-2]!=',') js+=','+"\n"
 							w.converted = w.converted.substring(1)
@@ -2814,6 +2829,9 @@ class Aya {
 						_.writes[w.entity_index+1].async=true
 
 					}
+					if(w.start.key_expression) {
+						js+='['
+					}					
 					js+=(w.converted!==undefined?w.converted:w.entity)
 				}			
 				if(w.start.func_decl) {
@@ -2904,7 +2922,7 @@ class Aya {
 						|| w.end.if 
 						|| !['?',';'].includes(w.entity)&&w.end.else 
 						|| w.end.loop) {
-					if(w.recent_action!='func_call'&&w.has_semicolon!==false)w.has_semicolon=true
+					if(w.recent_action!='func_call'&&w.has_semicolon!==false&&!w.catch_error)w.has_semicolon=true
 				}			
 				closed_actions_count=0
 				closed_actions={}
@@ -3020,7 +3038,6 @@ class Aya {
 					}
 					_.writes[i].close_managed=true
 				}
-				if(w.start.key_expression) js+='['	
 				if(w.entity=='?'){
 					js+='('					
 					js+=await get_expr(_.longestRecentExprRange(w.entity_index,1))
@@ -3094,7 +3111,7 @@ class Aya {
 				if(w.end.obj_key&&w.obj!='key_value') js+=':'
 				if(w.has_equal) js+="="
 				if(w.start.object_assignment&&w.assignment.type=='object'&&w.obj=='key') js+="{\n"
-				if(w.has_semicolon&&(!n||n&&!n.preceding_comma)&&!w.end.immediate_call&&!w.end.immediate_func_call){
+				if(w.has_semicolon&&(!n||n&&!n.preceding_comma)&&!w.end.immediate_call&&!w.end.immediate_func_call&&!w.catch_error){
 					js+=";\n"
 					if(addBottomComments!==false){
 						js+=add_bottom_comments(w)
@@ -3489,9 +3506,10 @@ class Aya {
 
 	entityDefined(scope,entity,not_object_scope=false,include_assignment=false,flag=''){
 		let entity_=entity
+		if(entity=='window') return this.window
 		if(typeof entity=='object'){
 			if(entity.type.type!='assignable') return null
-			if(entity.defined&&(!not_object_scope||!scope.__data__.objectScope)) return entity.defined
+			if(entity.defined&&(!not_object_scope||!scope.__data__.objectScope)&&not_object_scope!='window') return entity.defined
 			entity_=entity.entity
 		}
 		let _=this,r=null, untill, untill_function, untill_window, in_process
@@ -3518,15 +3536,18 @@ class Aya {
 		let assignments=_.assignments[_.assignment_level], includes
 		if(assignments.entities) includes=assignments.entities.includes(entity_)
 		while(true){	
-	
-			if(_scope[entity_]&&!_scope[entity_].__data__ && ['function','object'].includes(typeof _scope[entity_])){ 				
-				return _.defineEntity(scope, entity,typeof _scope[entity_],true,false,false,true)
-			}
-
+			
 			if(untill_window && _scope.is_window_scope) {
 				r=null
 				break
 			}
+
+
+			if(_scope[entity_]&&!_scope[entity_].__data__ && ['function','object'].includes(typeof _scope[entity_])){ 				
+				return _.defineEntity(scope, entity,typeof _scope[entity_],true,false,false,true)
+			}
+
+
 			if(_scope[entity_] && _scope[entity_].__data__ && (!_scope[entity_].__data__.inProcess||in_process) && (!not_object_scope || (!_scope.__data__.objectScope && _scope.__data__.type!='object')) || _scope.is_window_scope && typeof window[entity_]!='undefined' ) {
 				if(!include_assignment || !(assignments.scope&&_scope.__data__.id == assignments.scope.__data__.id&&includes))					
 					if(_scope[entity_] || _scope.is_window_scope && !['undefined'].includes(typeof window[entity_])) {
@@ -3548,7 +3569,8 @@ class Aya {
 			}
 		}
 		if(typeof entity=='object') {
-			entity.defined = r
+			if(untill_window&&entity.defined){}
+			else entity.defined = r
 		}
 		return r
 	}
@@ -3589,7 +3611,7 @@ class Aya {
 			if(type=='arrow_function') type='function'
 		}
 		scope[entity_] = {__data__:{type,inProcess,parentScope:scope,entity:entity_}}
-		if(typeof entity=='object') {			
+		if(typeof entity=='object') {		
 			entity.defined = scope[entity_]
 		}
 
@@ -3645,7 +3667,7 @@ class Aya {
 	definesEntityObj(entity_obj){
 		let _=this,i,from=entity_obj.entity_index
 		for(i=from;i>=0;i--){
-			if((_.writes[i].line_first_entity && _.writes[i].tab==_.writes[i].prev_line_tab
+			if((_.writes[i].line_first_entity && _.writes[i].tab<=_.writes[i].prev_line_tab
 				||_.writes[i].scope_start)) {
 				return _.writes[i]
 			}
@@ -3848,8 +3870,8 @@ class Aya {
 				}else{
 					scope = parent_defined
 				}
-				if(index && chain_def=='var_assignment' && (define_rest && parent!='this' && (!prev_descendant_defined||prev_descendant_part_of_js) && !imported_object || force_assign && (!parent_defined || parent_defined_recently) ) ){					
-					defines_entity_obj = _.definesEntityObj(entity_obj)					
+				if(index && chain_def=='var_assignment' && (define_rest && parent!='this' && (!prev_descendant_defined||prev_descendant_part_of_js) && !imported_object || force_assign && (!parent_defined || parent_defined_recently) ) ){										
+					defines_entity_obj = _.definesEntityObj(entity_obj)		
 					if(!defines_entity_obj.define) defines_entity_obj.define=[]
 					defines_entity_obj.define.push([converted,_.assoc[parent_type],index])
 				}
@@ -3861,8 +3883,9 @@ class Aya {
 					descendant_type = scope.__data__.type
 				}
 			}
-			if((['object','function','number','string'].includes(descendant_type) || right_var_name&&parent_type!='array') && literal_type!='string' || part_of_js) descendant = `.${descendant}`
-			else descendant = `[${descendant}]`
+			if(literal_type!='string' && ((['object','function','number','string'].includes(descendant_type) || right_var_name&&parent_type!='array') || part_of_js || parent_defined && parent_defined.__data__ && descendant_defined && descendant_defined.__data__ && parent_defined.__data__.id==descendant_defined.__data__.parentScope.__data__.id)) {
+				descendant = `.${descendant}`
+			} else descendant = `[${descendant}]`
 			converted+=descendant
 			prev_descendant_defined = descendant_defined
 			prev_descendant_part_of_js = part_of_js
@@ -3875,7 +3898,8 @@ class Aya {
 				entity = entity.substring(1)
 				entity_type = 'integer'
 			}
-			entity_defined = _.entityDefined(scope,entity)
+			entity_defined = _.entityDefined(scope,entity,'window')
+			if(entity_defined&&parts[0]!='this'&&entity_defined.__data__.parentScope.__data__.entity=='this') entity_defined=null
 			if(entity_defined) {
 				if(entity_type && ![null,'integer','string'].includes(entity_defined.__data__.type)) _.error(8,entity)
 				entity_type = entity_defined.__data__.type
@@ -3915,7 +3939,7 @@ class Aya {
 						entity_obj.defined = scope
 					} else if(i==parts.length-2) {
 						if(descendant_type=='function') chain_def='func_call'
-						else if(!descendant_type) {
+						else if(!descendant_type&&!descendant_defined) {
 							parts = parent.split('.')
 							last = parts[parts.length-1]
 							let _scope = {}
@@ -3923,7 +3947,7 @@ class Aya {
 							_.createScopeTemplate(_scope,scope.__data__.lastScope)
 							_.implementScope(scope,last,)	
 							scope = _scope
-							if(entity_obj.dots_count||entity_obj.next_entity&&!entity_obj.next_entity_operator&&!entity_obj.next_entity_special)chain_def='func_call'					
+							if(entity_obj.dots_count||entity_obj.next_entity&&!entity_obj.next_entity_operator&&!entity_obj.next_entity_special&&entity_obj.next_entity[0]!='.')chain_def='func_call'					
 						} else chain_def=''
 					}
 				} else {
@@ -3940,6 +3964,7 @@ class Aya {
 		if(scope && scope.__data__.type=='function'&& chain_def!='var_assignment'&&!entity_obj.func_decl&&!descendant_defined) {
 			chain_def='func_call'
 		}
+		if(['func_call','maybe_func_call'].includes(chain_def)&&entity_obj.has_end_backslash) chain_def=''
 		if(chain_def) entity_obj.start[chain_def] = true
 		if(parts[0]!='this'&&entity_obj.initial_assignment&&chain_def=='func_call'&&!descendant_defined) _.error(10,entity)
 		if(chain_def!='func_call'&&!contine) entity_obj.defined = scope

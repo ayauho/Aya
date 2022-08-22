@@ -344,6 +344,14 @@ class Aya {
 			if((recent_action()[0]=='var_assignment' || func_decl()==2 && lineFirstEntity) && lineLastEntity && !dots_count && !entity_obj.start.func_call && !next_line_higher_tab()) return false
 			if(entity_obj.start.func_call&&!false_if_started) return true
 			let defined = _.entityDefined(scope,entity_obj,true,false,'in_process'), r = false
+			if((!defined || defined.__data__.type!='function') && func_decl()==2 && (dots_count == 1 && entity!=dot || dots_count == 2 && entity!=dot+dot && (lineLastEntity && !next_line_higher_tab()) || dots_count>2) && lineFirstEntity) {
+				if(!defined) r = _.defineEntity(scope,entity_obj,'function',false,true)
+				else {
+					defined.__data__.type = 'function'
+					r = defined
+				}
+				return r
+			}
 			if(defined && ( defined.__data__.type=='function'||defined.__data__.funcVar)) r = defined
 			if(false_if_started&&entity_obj.start.func_call) {
 				if(recent_action()[0]=='func_call') r = false
@@ -745,9 +753,13 @@ class Aya {
 		}
 
 		function scope_tab(tab){
-			if(tab===false) _.scope_tabs_stack.pop()
+			if(tab===false) {
+				_.scope_tabs_stack.pop()
+			}
 			else if(tab===undefined) return _.scope_tabs_stack[_.scope_tabs_stack.length-1]
-			else _.scope_tabs_stack.push(tab)
+			else {
+				_.scope_tabs_stack.push(tab)
+			}
 		}
 
 		function prev_entity_equal_line_index(line_index=undefined,entity_index=undefined){
@@ -1115,7 +1127,7 @@ class Aya {
 						}
 						entity = line[1][index]
 					}
-					_.writes[_.entity_index] = entity_obj = repeat_entity_obj || {entity_index:_.entity_index,entity:null,index,struct_index,level:{},start:{at:{}},end:{at:{}}}										
+					_.writes[_.entity_index] = entity_obj = repeat_entity_obj || {entity_index:_.entity_index,entity:null,index,struct_index,level:{},start:{at:{}},end:{at:{}},assignment:{}}										
 					entity_obj.initial_entity=entity
 					entity_obj.tab = tab
 					entity_obj.prev_line_tab = prev_line_tab()
@@ -1313,7 +1325,7 @@ class Aya {
 					}
 
 					//-- start if scope
-					if(prev_entity==q_mark){
+					if(prev_entity==q_mark&&!repeat_this){
 						create_child_scope(null,'if')
 					}
 
@@ -1321,7 +1333,7 @@ class Aya {
 					if((middle_dots_count==2&&entity!='..')||repeat_this){				
 						if(!repeat_this){
 							entity_obj.loop={}
-					    	entity_obj.entities = entity.split('..')				    	
+					    	entity_obj.entities = entity.split('..')			    	
 							entity = entity_obj.entities[0]
 							check_all_dots()
 							entity_obj.entity = entity
@@ -1334,6 +1346,7 @@ class Aya {
 					    	repeat_this=false
 					    	entity = entity_obj.entities[1]
 					    	check_side_symbols()
+					    	check_underscore()
 					    	entity_obj.entity = entity
 					    	entity_obj.type=_.type(entity_obj)
 							if(entity_obj.start.loop_from && left_bracket(entity)){
@@ -1590,7 +1603,10 @@ class Aya {
 						if(scope.__data__.type=='class') {
 							entity_obj.converted='static '
 							entity_obj.static = true
-						} else entity_obj.converted='new '
+						} else {
+							entity_obj.converted='new '
+							if((lineFirstEntity || prev_entity=='@' && prev_entity_obj.line_first_entity) && func_decl()==2) entity_obj.return = true
+						}
 						if(prev_entity=='@') prev_entity_obj.converted='await '						
 						skip1=true
 					} else					
@@ -1684,7 +1700,7 @@ class Aya {
 								helper = false
 								entity_obj.scope = scope
 								if(recentAction=='class'){
-									if(!prev_entity_obj.static||prev_entity_obj.is_get&&!_.writes[_.entity_index-2].static){
+									if( !prev_entity_obj.static && !_.writes[_.entity_index-2].static ||prev_entity_obj.is_get&&!_.writes[_.entity_index-2].static){
 										if(scope['this']&&scope.__data__.entity!='this'){
 											helper=true
 											scope = entity_obj.scope = scope['this']
@@ -2319,6 +2335,7 @@ class Aya {
 											if(_scope&&!_.writes[n].assigned){
 												if(_.writes[n].chain&&_.writes[n].defined) {
 													for(let e in _scope) if(e!='__data__') _.writes[n].defined[e] = _scope[e]
+													_.writes[n].defined.__data__.type = _scope.__data__.type
 													_.writes[n].assigned=true
 													break
 												}
@@ -2347,11 +2364,10 @@ class Aya {
 						next_is='key'
 					}
 					if(_.stop_at&&_.entity_index==_.stop_at) throw{}
-					if(entity==comma) _.instruction_index++								
+					if(entity==comma) _.instruction_index++			
 					_.entity_index++
 					index++
 					_.showStacks(true)
-					
 				}
 				_.line_index++
 				_.instruction_index++
@@ -3675,7 +3691,13 @@ class Aya {
 				break
 			}
 			if(untill_function && _scope.__data__.type=='function') return null
-			_scope = _scope.__data__.className? _.window :  _scope.__data__.parentScope
+			if(_scope.__data__.className){
+				if(_scope.__data__.entity==entity) return _scope
+				_scope = _.window
+			}else{
+				_scope = _scope.__data__.parentScope
+			}
+			
 			if(untill && _scope && _scope[untill]) {
 				return null
 			}
@@ -3710,7 +3732,7 @@ class Aya {
 				else break
 			}
 		}
-		if(!scope.__data__.entity!='this'&&entity_!='this'&&entity_!='super' && !scope[entity_] && !dont_assign && type!='function' && !scope.__data__.objectScope || type=='arrow_function'){
+		if(!scope.__data__.entity!='this'&&entity_!='this'&&entity_!='super' && !scope[entity_] && !dont_assign && (type!='function'||as_argument) && !scope.__data__.objectScope || type=='arrow_function'){
 			if(!as_argument) {
 				if(!scope.__data__.assignments.includes(entity_)){
 					scope.__data__.assignments.push(entity_)
@@ -3905,7 +3927,7 @@ class Aya {
 						descendant_type='function'
 						descendant_defined = {}
 						part_of_js=true
-						_.createScopeTemplate(descendant_defined,parent_defined,descendant_type)				
+						_.createScopeTemplate(descendant_defined,parent_defined,descendant_type)		
 					} else if(typeof Object[descendant]=='object'){
 						descendant_type='object'
 						descendant_defined = {}
@@ -4054,7 +4076,9 @@ class Aya {
 						} else scope = last_defined
 						entity_obj.defined = scope
 					} else if(i==parts.length-2) {
-						if(descendant_type=='function') chain_def='func_call'
+						if(descendant_type=='function') {
+							chain_def='func_call'
+						}
 						else if(!descendant_type&&!descendant_defined) {
 							parts = parent.split('.')
 							last = parts[parts.length-1]
@@ -4083,7 +4107,7 @@ class Aya {
 		if(['func_call','maybe_func_call'].includes(chain_def)&&entity_obj.has_end_backslash) chain_def=''
 		if(chain_def) entity_obj.start[chain_def] = true
 		if(parts[0]!='this'&&entity_obj.initial_assignment&&chain_def=='func_call'&&!descendant_defined) _.error(10,entity)
-		if(chain_def!='func_call'&&!contine) entity_obj.defined = scope
+		if(!contine) entity_obj.defined = scope
 		entity_obj.chain_def=chain_def
 		scope = initial_scope		 
 		return entity

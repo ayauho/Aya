@@ -266,15 +266,17 @@ C className
    a: 1  # class scope variable definition
    C \'some_default_value'             # constructor defined also with `C`
       log 'Constructor instructions'
-   class_func
+   class_func   
       log 'Usual function of the class, input: ' + arg
+   @async_func                         # @ is async prefix
+      explicit_backend_call            # just for example
    << static_func
       log 'Static function of the class'
    G get_func                          # Capital letter `G` defines getter
-      _class_func 'Hello'.              # returns this.class_func call with 'Hello' inputed argument
+      _class_func 'Hello'.             # returns this.class_func call with 'Hello' inputed argument
       log 'Getter of the class'
    S set_func                          # Capital letter `S` defines getter
-      _a: arg                           # `a` preceding underline turned to this.a
+      _a: arg                          # `a` preceding underline turned to this.a
       log 'Setter of the class'
 
 # `<<` is equivalent to `new` in JS
